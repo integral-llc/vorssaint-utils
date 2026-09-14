@@ -62,7 +62,6 @@ final class MenuPanelFocus: ObservableObject {
 struct MenuPanelView: View {
     var notchSize: CGSize? = nil
     @ObservedObject private var l10n = L10n.shared
-    @ObservedObject private var updates = UpdateService.shared
     @ObservedObject private var panelFocus = MenuPanelFocus.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -81,7 +80,6 @@ struct MenuPanelView: View {
     @AppStorage(DefaultsKey.panelSectionOrder) private var sectionOrderRaw = ""
     @State private var navigableContentHeight: CGFloat = 0
     @State private var metricContentHeight: CGFloat = 0
-    @State private var updateBannerHeight: CGFloat = 0
     @State private var selectedSection: PanelSectionID = PanelLayout.order.first ?? .keepAwake
     @State private var selectedMetric: MetricDetailKind?
     @FocusState private var focusedSection: PanelSectionID?
@@ -120,11 +118,6 @@ struct MenuPanelView: View {
         }
         .onChange(of: monitorNeeds) { _, _ in
             syncMonitorSampling()
-        }
-        .onChange(of: updates.state) { _, state in
-            if !state.showsMenuPanelBanner {
-                updateBannerHeight = 0
-            }
         }
         .onChange(of: panelFocus.request) { _, request in
             applyFocus(request)
@@ -195,8 +188,6 @@ struct MenuPanelView: View {
 
     private var navigablePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            UpdateBanner()
-                .reportHeight($updateBannerHeight)
             header
             sectionNavigation
 
@@ -217,8 +208,6 @@ struct MenuPanelView: View {
 
     private var metricPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            UpdateBanner()
-                .reportHeight($updateBannerHeight)
             header
 
             if let selectedMetric {
@@ -272,12 +261,7 @@ struct MenuPanelView: View {
         min(maxHeight, max(220, metricScrollHeight + navigableChromeHeight))
     }
 
-    private var navigableChromeHeight: CGFloat {
-        let bannerHeight = updates.state.showsMenuPanelBanner
-            ? (max(updateBannerHeight, 48) + 12)
-            : 0
-        return 180 + bannerHeight
-    }
+    private var navigableChromeHeight: CGFloat { 180 }
 
     private var estimatedNavigableContentHeight: CGFloat {
         switch activeSection {
@@ -1068,6 +1052,7 @@ private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
     case mouseScroll, focusFollowsMouse, mouseAcceleration, mouseNavigation, switcher, cutPaste, autoQuit, shelf, windowMaximize, dockPreview, keyDebounce,
          dockClick, dockClickHide, dockClickCycle, middleClick, textSnippets, radialMenu, mouseButtonShortcuts, superKey,
          mouseClickDebounce, notch
+    case layoutSwitcher
 
     var id: String { rawValue }
 
@@ -1093,6 +1078,7 @@ private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
         case .radialMenu: return .radialMenu
         case .mouseButtonShortcuts: return .mouseButtonShortcuts
         case .superKey: return .superKey
+        case .layoutSwitcher: return .layoutSwitcher
         case .mouseClickDebounce: return .mouseClickDebounce
         }
     }
@@ -1110,7 +1096,7 @@ private enum ControlCategory: String, CaseIterable, Identifiable {
         case .switcher, .dockPreview, .dockClick, .dockClickHide, .dockClickCycle, .windowMaximize, .autoQuit, .notch:
             return .windows
         case .mouseScroll, .focusFollowsMouse, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts, .middleClick, .keyDebounce,
-             .textSnippets, .radialMenu, .superKey, .mouseClickDebounce:
+             .textSnippets, .radialMenu, .superKey, .mouseClickDebounce, .layoutSwitcher:
             return .inputDevices
         case .cutPaste, .shelf:
             return .files
@@ -1181,6 +1167,8 @@ struct QuickControlsSection: View {
     @AppStorage(DefaultsKey.panelControlRadialMenu) private var showRadialMenu = true
     @AppStorage(DefaultsKey.panelControlMouseButtonShortcuts) private var showMouseButtonShortcuts = true
     @AppStorage(DefaultsKey.panelControlSuperKey) private var showSuperKey = true
+    @AppStorage(DefaultsKey.panelControlLayoutSwitcher) private var showLayoutSwitcher = true
+    @AppStorage(DefaultsKey.layoutSwitcherEnabled) private var layoutSwitcherEnabled = false
     @AppStorage(DefaultsKey.panelControlMouseAcceleration) private var showMouseAcceleration = true
     @AppStorage(DefaultsKey.panelControlMouseClickDebounce) private var showMouseClickDebounce = true
     @AppStorage(DefaultsKey.panelControlWindowsExpanded) private var windowsExpanded = false
@@ -1302,6 +1290,7 @@ struct QuickControlsSection: View {
         case .radialMenu: return radialMenuEnabled
         case .mouseButtonShortcuts: return mouseButtonShortcutsEnabled || spacesEnabled
         case .superKey: return superKeyEnabled
+        case .layoutSwitcher: return layoutSwitcherEnabled
         case .mouseClickDebounce: return mouseClickDebounceEnabled
         }
     }
@@ -1380,6 +1369,7 @@ struct QuickControlsSection: View {
         case .radialMenu: return showRadialMenu
         case .mouseButtonShortcuts: return showMouseButtonShortcuts
         case .superKey: return showSuperKey
+        case .layoutSwitcher: return showLayoutSwitcher
         case .mouseClickDebounce: return showMouseClickDebounce
         }
     }
@@ -1751,6 +1741,25 @@ struct QuickControlsSection: View {
                     SuperKeyService.shared.syncWithPreferences()
                     requestAccessibilityIfNeeded(enabled)
                 }
+        case .layoutSwitcher:
+            let layoutSwitcherStrings = FeatureStrings.layoutSwitcher(l10n.language)
+            PanelToggleRow(title: layoutSwitcherStrings.pageTitle,
+                           caption: caption(layoutSwitcherStrings.hubDescription,
+                                            needsAccessibility: layoutSwitcherEnabled),
+                           systemImage: "character.cursor.ibeam",
+                           isOn: $layoutSwitcherEnabled,
+                           isEditing: editing,
+                           showsDragHandle: true,
+                           visibility: $showLayoutSwitcher,
+                           needsAttention: layoutSwitcherEnabled && !permissions.accessibility,
+                           permissionButtonTitle: l10n.s.permissionRequest,
+                           permissionAction: accessibilityPermissionAction(layoutSwitcherEnabled),
+                           accessoryTitle: nil,
+                           accessoryAction: {})
+                .onChange(of: layoutSwitcherEnabled) { _, enabled in
+                    LayoutSwitcherService.shared.syncWithPreferences()
+                    requestAccessibilityIfNeeded(enabled)
+                }
         case .mouseAcceleration:
             PanelToggleRow(title: l10n.s.mouseAccelerationName,
                            caption: l10n.s.mouseAccelerationCaption,
@@ -1810,6 +1819,7 @@ struct QuickControlsSection: View {
         showRadialMenu = true
         showMouseButtonShortcuts = true
         showSuperKey = true
+        showLayoutSwitcher = true
         showMouseAcceleration = true
         showMouseClickDebounce = true
         windowsExpanded = false
@@ -2317,127 +2327,6 @@ private final class HeightReportingHostingView<Content: View>: NSHostingView<Con
     override func layout() {
         super.layout()
         onLayout?()
-    }
-}
-
-private struct MenuPanelHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private extension View {
-    func reportHeight(_ height: Binding<CGFloat>) -> some View {
-        background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: MenuPanelHeightPreferenceKey.self,
-                                       value: proxy.size.height)
-            }
-        )
-        .onPreferenceChange(MenuPanelHeightPreferenceKey.self) { value in
-            guard abs(value - height.wrappedValue) > 0.5 else { return }
-            DispatchQueue.main.async {
-                height.wrappedValue = value
-            }
-        }
-    }
-}
-
-private extension UpdateService.State {
-    var showsMenuPanelBanner: Bool {
-        switch self {
-        case .available, .downloading, .installing:
-            return true
-        default:
-            return false
-        }
-    }
-}
-
-// MARK: - Update banner
-
-/// Discreet "update available" row shown above everything when a newer release
-/// is found. Tapping it installs the update (which quits and relaunches).
-struct UpdateBanner: View {
-    @ObservedObject private var l10n = L10n.shared
-    @ObservedObject private var updates = UpdateService.shared
-
-    var body: some View {
-        switch updates.state {
-        case let .available(version):
-            let isBeta = UpdateServiceSupport.SemanticVersion(raw: version)?.isPrerelease ?? false
-            let tintColor: Color = isBeta ? .orange : .accentColor
-
-            Button {
-                appDelegate()?.showUpdatePreview()
-            } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.white)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(l10n.s.updateBannerTitle)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        // The title above already says an update is waiting,
-                        // so this line carries the version instead of saying
-                        // the same words a second time.
-                        Text("\(l10n.s.versionPrefix) \(version)")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    Spacer()
-                    Text(l10n.s.updateBannerAction)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(tintColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(.white))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(tintColor)
-                )
-            }
-            .buttonStyle(.plain)
-        case let .downloading(progress):
-            progressRow(l10n.s.updateDownloading, fraction: progress)
-        case .installing:
-            progressRow(l10n.s.updateInstalling)
-        default:
-            EmptyView()
-        }
-    }
-
-    /// With a known fraction the row shows a real bar and percentage; while
-    /// the size is unknown (or for the install step) it keeps the spinner.
-    private func progressRow(_ text: String, fraction: Double? = nil) -> some View {
-        HStack(spacing: 8) {
-            if fraction == nil {
-                ProgressView().controlSize(.small)
-            }
-            Text(text).font(.system(size: 11.5, weight: .medium))
-            if let fraction {
-                ProgressView(value: fraction)
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity)
-                Text("\(Int(fraction * 100))%")
-                    .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            } else {
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        )
     }
 }
 

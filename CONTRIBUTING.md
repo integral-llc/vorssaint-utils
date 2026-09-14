@@ -79,6 +79,34 @@ A few conventions to keep in mind.
   agent](docs/AI-CONTRIBUTIONS.md) is the process that gets that work merged
   here, and it is written to be read by the agent as much as by you.
 
+## Building with the transcriber
+
+The Transcriber shells out to `yt-dlp`, `ffmpeg`, `ffprobe` and `whisper-cli`,
+and decodes against a whisper model of about 1.5 GB. None of that is fetched by
+a normal build: `./build.sh` stays the plain `swiftc` call with no downloads, so
+CI and everyone else are unaffected, and the feature simply reports its helpers
+as missing.
+
+```sh
+FFMPEG_DIR=/path/to/your/ffmpeg ./build.sh --transcriber
+```
+
+That fetches `yt-dlp`, builds `whisper.cpp` with CMake, downloads the model into
+`~/Library/Application Support/Vorssaint/Models`, caches all of it under
+`build/.transcriber`, and stages and signs the binaries inside the bundle.
+
+`ffmpeg` and `ffprobe` are deliberately **not** downloaded. The macOS builds in
+general circulation are third-party rebuilds whose configure flags, and so whose
+licence, nobody here has established, and this app is redistributed under
+GPL-3.0-or-later and signed under a public Developer ID. Point `FFMPEG_DIR` at a
+pair whose provenance you know before shipping anything built this way.
+
+The Update button in the transcriber's settings installs a `yt-dlp` that
+Vorssaint did not sign and Apple did not notarize, into Application Support
+rather than the bundle, after checking it against the release's SHA2-256SUMS.
+That check catches a damaged transfer; it is not a trust anchor. Nothing there
+runs on its own.
+
 ## Strings and translations
 
 Every user facing string lives in `Core/Localization.swift` as a field of the

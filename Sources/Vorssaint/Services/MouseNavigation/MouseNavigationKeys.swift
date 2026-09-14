@@ -105,24 +105,8 @@ enum MouseNavigationKeys {
     }
 
     private static func producedCharacter(from layout: Data, keyCode: UInt16, shift: Bool) -> String? {
-        var deadKeyState: UInt32 = 0
-        var length = 0
-        var characters = [UniChar](repeating: 0, count: 8)
-        let modifiers = shift ? UInt32(shiftKey >> 8) : 0
-        let status = layout.withUnsafeBytes { raw -> OSStatus in
-            guard let base = raw.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return -1 }
-            return UCKeyTranslate(base,
-                                  keyCode,
-                                  UInt16(kUCKeyActionDown),
-                                  modifiers,
-                                  UInt32(LMGetKbdType()),
-                                  UInt32(kUCKeyTranslateNoDeadKeysBit),
-                                  &deadKeyState,
-                                  characters.count,
-                                  &length,
-                                  &characters)
-        }
-        guard status == noErr, length > 0 else { return nil }
-        return String(utf16CodeUnits: characters, count: length)
+        KeyboardLayoutGlyph.character(in: layout,
+                                      keyCode: keyCode,
+                                      carbonModifiers: shift ? shiftKey : 0)
     }
 }

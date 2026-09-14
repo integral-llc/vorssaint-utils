@@ -37,13 +37,11 @@ Imported lyrics and timing adjustments are kept for only the current song in mem
 
 Vorssaint opens only a few kinds of connection, and each one belongs to a visible feature.
 
-1. **The update check, automatic and easy to switch off.** So it can tell you when a newer version exists, Vorssaint asks GitHub's public releases API at `api.github.com` for this project's latest release. The request carries only a standard user agent with the app name and its version, and no account, identifier or usage data go along with it. It runs a short while after launch and now and then while the app is open. You can turn it off in Settings under About, and once it is off no update requests are made. If you choose to install an offered update, the disk image comes from GitHub.
+1. **The internet speed test, only when you ask.** The optional speed test in the Network section reaches Cloudflare's public speed endpoints at `speed.cloudflare.com` to measure latency and your download and upload throughput. This happens only when you start a test yourself, and never on its own.
 
-2. **The internet speed test, only when you ask.** The optional speed test in the Network section reaches Cloudflare's public speed endpoints at `speed.cloudflare.com` to measure latency and your download and upload throughput. This happens only when you start a test yourself, and never on its own.
+2. **Homebrew actions, only when you use the Homebrew manager.** Search, install and uninstall actions run the local `brew` command, which may contact Homebrew, GitHub and package vendor hosts to search metadata or download files. Popularity badges use Homebrew's public aggregate analytics JSON from `formulae.brew.sh`. Vorssaint does not send its own analytics, capture passwords or run `brew` as root.
 
-3. **Homebrew actions, only when you use the Homebrew manager.** Search, install and uninstall actions run the local `brew` command, which may contact Homebrew, GitHub and package vendor hosts to search metadata or download files. Popularity badges use Homebrew's public aggregate analytics JSON from `formulae.brew.sh`. Vorssaint does not send its own analytics, capture passwords or run `brew` as root.
-
-4. **The app update check, only with App updates switched on.** Finding out which apps are behind uses the sources you leave enabled. The Homebrew source runs the local `brew` command, exactly as above. The App Store source sends store identifiers to `uclient-api.itunes.apple.com`, falling back to bundle identifiers at `itunes.apple.com`, along with your Mac's region, to find the current Mac version.
+3. **The app update check, only with App updates switched on.** Finding out which apps are behind uses the sources you leave enabled. The Homebrew source runs the local `brew` command, exactly as above. The App Store source sends store identifiers to `uclient-api.itunes.apple.com`, falling back to bundle identifiers at `itunes.apple.com`, along with your Mac's region, to find the current Mac version.
 
 The Online source checks supported public update addresses declared inside installed apps. These requests go to the app developer's server or its release hosting service, including `github.com` and redirected download hosts. The server receives your public IP address and the requested URL, which can reveal which app is being checked. Vorssaint does not add your app inventory, local paths, account details or device identifiers to these requests, and does not use stored cookies or credentials. The declared URL, including any query parameters it already contains, is sent as provided by the app. These services may process ordinary request data under their own privacy policies.
 
@@ -51,19 +49,36 @@ The Online source also downloads the complete public app catalog from `formulae.
 
 The check runs when you open the list or press Check now, and on a schedule only if you set one. The three source switches under App updates control these connections independently. Turning off the App Store source stops its store and bundle identifier lookups. Turning off the Online source stops both developer feed requests and public catalog requests on subsequent checks.
 
-5. **Temporary screenshot links, only when you choose to create one.** Creating a link sends the rendered PNG and your chosen expiration of 1, 6 or 24 hours to the Vorssaint service over HTTPS. It does not send your name, account, device identifier or MAC address. On your Mac, the feature keeps only the link, expiration and private deletion token while the link is active, so you can copy it or delete it early. The service holds your public IP address in memory for no more than 24 hours to prevent abuse, while network providers may process normal HTTPS request data under their own policies.
+4. **Temporary screenshot links, only when you choose to create one.** Creating a link sends the rendered PNG and your chosen expiration of 1, 6 or 24 hours to the Vorssaint service over HTTPS. It does not send your name, account, device identifier or MAC address. On your Mac, the feature keeps only the link, expiration and private deletion token while the link is active, so you can copy it or delete it early. The service holds your public IP address in memory for no more than 24 hours to prevent abuse, while network providers may process normal HTTPS request data under their own policies.
 
 The uploaded PNG is decoded and rebuilt without embedded metadata. The image and its link metadata are permanently deleted when the link expires or you delete it, and the service does not create screenshot backups. Private moderation stores the active link, not another uploaded image, and removes that message when the link ends. Anyone with the link can view, download, save or redistribute the image, and active links are available to the service operator for abuse moderation. Share only with people you trust.
 
-6. **Temporary recording links, only when you choose to create one.** The finished video is compressed on your Mac and sent over HTTPS with the audio you kept and your chosen expiration of 1 or 6 hours. It does not send your name, account or device identifier. On your Mac, the feature keeps only the link, expiration and private deletion token while the link is active. The service temporarily processes your public IP address to prevent abuse, while network providers may process normal HTTPS request data under their own policies.
+5. **Temporary recording links, only when you choose to create one.** The finished video is compressed on your Mac and sent over HTTPS with the audio you kept and your chosen expiration of 1 or 6 hours. It does not send your name, account or device identifier. On your Mac, the feature keeps only the link, expiration and private deletion token while the link is active. The service temporarily processes your public IP address to prevent abuse, while network providers may process normal HTTPS request data under their own policies.
 
 The service validates and rebuilds the MP4 without its original metadata. The video and link metadata are permanently deleted when the link expires or you delete it, and the service does not create backups. Anyone with the link can view, download, save or redistribute the video, and active links are available to the service operator for abuse moderation. Share only with people you trust.
 
-7. **Feedback, only when you press Send.** A submission sends the category you choose and the text you type. The optional technical details switch adds only the app version and build, macOS version, Mac model and app language shown in the form. It never includes your name, account, email address, device identifier, logs, screenshots, files or clipboard content. Your public IP address is processed temporarily in memory for rate limiting and is not attached to the feedback.
+6. **Feedback, only when you press Send.** A submission sends the category you choose and the text you type. The optional technical details switch adds only the app version and build, macOS version, Mac model and app language shown in the form. It never includes your name, account, email address, device identifier, logs, screenshots, files or clipboard content. Your public IP address is processed temporarily in memory for rate limiting and is not attached to the feedback.
 
 Feedback is delivered to private support channels visible to the service owner. After delivery, the text and any technical details you selected remain there until the service owner deletes them. The temporary delivery copy is then deleted; if delivery never succeeds, that copy is permanently deleted after 7 days. No contact information is sent, so feedback cannot receive a direct reply.
 
-8. **Online lyrics, only after you enable the separate lookup option.** While the lyrics view is open, a lookup sends the current song's title, artist, album and duration over HTTPS to `lrclib.net`. Audio, artwork, local paths, accounts and listening history are not included. The provider receives ordinary request data, including your public IP address, under its own policies. Requests use an ephemeral session without stored cookies, reject redirects and stop when you hide the view or disable lookup. Lyrics are kept only in memory for the current song. Local lyric import works without this connection.
+7. **Online lyrics, only after you enable the separate lookup option.** While the lyrics view is open, a lookup sends the current song's title, artist, album and duration over HTTPS to `lrclib.net`. Audio, artwork, local paths, accounts and listening history are not included. The provider receives ordinary request data, including your public IP address, under its own policies. Requests use an ephemeral session without stored cookies, reject redirects and stop when you hide the view or disable lookup. Lyrics are kept only in memory for the current song. Local lyric import works without this connection.
+
+8. **The transcriber, only when you start one.** Giving it a link contacts that
+site, through the bundled `yt-dlp`, to read the title and fetch the audio. This
+is an ordinary request to the site you named; Vorssaint sends no account, no
+cookies and no identifier with it, and it never reads your browser's cookies.
+The audio is written to your Downloads folder, or wherever you pointed it, and
+is deleted once the transcript is written unless you asked to keep it.
+
+Decoding runs on your Mac by default and nothing leaves it. If you switch
+decoding to a whisper.cpp server of your own, the audio file is uploaded to the
+host you typed; a host typed without a scheme is reached over HTTPS, so it does
+not travel in the clear. Vorssaint runs no such server and has none of its own.
+
+Pressing Update in the transcriber's Helpers section contacts GitHub for the
+current `yt-dlp` release and installs it. Nothing there happens on its own: no
+part of the transcriber checks for updates, phones home or contacts anything
+until you start a transcription or press that button.
 
 That is the entire list. There are no hidden beacons or background uploads.
 

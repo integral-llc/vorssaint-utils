@@ -20,7 +20,7 @@ enum AppInfo {
     }
 
     /// True for the local "Vorssaint (Developer)" build (bundle id ends in `.dev`).
-    /// It is never published and never auto-updates; all work is tested here first.
+    /// It is never published; all work is tested here first.
     static var isDeveloperBuild: Bool {
         (Bundle.main.bundleIdentifier ?? "").hasSuffix(".dev")
     }

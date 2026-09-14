@@ -14,11 +14,10 @@
 "NSCameraUsageDescription" = "Vorssaint, kameranızı yalnızca açtığınız önizleme penceresinde gösterir; böylece aramadan önce nasıl göründüğünüzü kontrol edebilirsiniz. Hiçbir şey kaydedilmez veya Mac'inizden çıkmaz.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "Vorssaint, yalnızca seçtiğiniz doğrulanmış WhatsApp dosyalarını incelemek, düzenlemek veya Çöp Sepeti'ne taşımak için İndirilenler'deki yerel meta verileri denetler.";
-
+"NSDownloadsFolderUsageDescription" = "Vorssaint, başlattığınız deşifre metinlerini buraya kaydeder ve yalnızca seçtiğiniz doğrulanmış WhatsApp dosyalarını incelemek, düzenlemek veya Çöp Sepeti'ne taşımak için yerel meta verileri denetler.";
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "Vorssaint, doğrulanmış WhatsApp indirmelerini açıkça seçtiğiniz bir hedef klasörde düzenler.";
-"NSDocumentsFolderUsageDescription" = "Vorssaint, doğrulanmış WhatsApp indirmelerini açıkça seçtiğiniz bir hedef klasörde düzenler.";
-"NSNetworkVolumesUsageDescription" = "Vorssaint, doğrulanmış WhatsApp indirmelerini açıkça seçtiğiniz bir hedef klasörde düzenler.";
-"NSRemovableVolumesUsageDescription" = "Vorssaint, doğrulanmış WhatsApp indirmelerini açıkça seçtiğiniz bir hedef klasörde düzenler.";
+"NSDesktopFolderUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
+"NSDocumentsFolderUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
+"NSNetworkVolumesUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
+"NSRemovableVolumesUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
 "NSCalendarsFullAccessUsageDescription" = "Yaklaşan randevularınızı ekranın üst kısmında gösterir. Takvim etkinlikleri bu Mac’te kalır.";

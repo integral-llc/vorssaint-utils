@@ -27,3 +27,6 @@ xcuserdata/
 .swiftpm/
 .cursor/
 .gemini/
+
+# Local deploy numbering (Tools/deploy-version.sh)
+.deploy-state

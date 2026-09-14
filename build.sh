@@ -32,6 +32,11 @@ DEV=0
 INSTALL=0
 TEST=0
 TEST_ARGS=()
+# The transcriber's helpers are third-party binaries and a 1.5 GB model. A
+# plain build must stay the dependency-free swiftc call CI runs, so they are
+# fetched only when asked for, cached, and staged from the cache afterwards.
+TRANSCRIBER=0
+TRANSCRIBER_CACHE="build/.transcriber"
 for arg in "$@"; do
     case "$arg" in
         --dev)     DEV=1 ;;
@@ -39,8 +44,28 @@ for arg in "$@"; do
         --test)    TEST=1 ;;
         --test-suite=*) TEST=1; TEST_ARGS+=("--suite=${arg#*=}") ;;
         --list-tests) TEST=1; TEST_ARGS+=(--list) ;;
+        --transcriber) TRANSCRIBER=1 ;;
     esac
 done
+
+# Where --install puts the bundle: /Applications, unless the caller names
+# another folder, as a local deploy to ~/Applications does.
+INSTALL_DIR="${VORSSAINT_INSTALL_DIR:-/Applications}"
+
+# A local deploy numbers its own builds. They are stamped into the bundle, not
+# Resources/Info.plist, whose version belongs to the release and is pinned by
+# the test suite. Checked here so a typo fails before the compile, not after.
+version_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+build_number_pattern='^[0-9]+$'
+if [[ -n "${VORSSAINT_MARKETING_VERSION:-}" \
+      && ! "$VORSSAINT_MARKETING_VERSION" =~ $version_pattern ]]; then
+    echo "✗ VORSSAINT_MARKETING_VERSION must look like 1.2.3, not '$VORSSAINT_MARKETING_VERSION'" >&2
+    exit 1
+fi
+if [[ -n "${VORSSAINT_BUILD_NUMBER:-}" && ! "$VORSSAINT_BUILD_NUMBER" =~ $build_number_pattern ]]; then
+    echo "✗ VORSSAINT_BUILD_NUMBER must be a whole number, not '$VORSSAINT_BUILD_NUMBER'" >&2
+    exit 1
+fi
 
 if (( DEV )); then
     APP_NAME="Vorssaint (Developer)"
@@ -66,7 +91,14 @@ TARGET="arm64-apple-macosx14.0"
 ENTITLEMENTS="Resources/Vorssaint.entitlements"
 LEGACY_IDENTITY="Vorssaint Utils Signing"
 
-developer_id_identity() {
+# The identity a hardened-runtime signature is made with: the one the caller
+# names in VORSSAINT_SIGNING_IDENTITY, as a local deploy does with the
+# developer's own certificate, else the Developer ID a release is signed with.
+release_identity() {
+    if [[ -n "${VORSSAINT_SIGNING_IDENTITY:-}" ]]; then
+        print -r -- "$VORSSAINT_SIGNING_IDENTITY"
+        return
+    fi
     security find-identity -v -p codesigning 2>/dev/null \
         | grep 'Developer ID Application' \
         | head -1 \
@@ -99,7 +131,7 @@ legacy_identity_installed() {
 # up front instead of falling through to ad-hoc — setup-signing.sh is free,
 # offline and idempotent. Gating on the install rather than the variant keeps
 # this off CI, where neither ci.yml nor release.yml passes --install.
-if (( DEV || INSTALL )) && [[ -z "$(developer_id_identity)" ]] \
+if (( DEV || INSTALL )) && [[ -z "$(release_identity)" ]] \
     && ! legacy_identity_installed; then
     echo "▸ No signing identity installed; creating the stable local one…"
     if ! ./Tools/setup-signing.sh; then
@@ -149,12 +181,31 @@ write_swift_output_file_map() {
     } > "$output_file"
 }
 
+# Defined up here rather than beside the other transcriber helpers: the
+# install parent runs finalize_installed_bundle_after_child and exits
+# long before execution reaches them.
+sign_transcriber_helpers() {
+    local bundle="$1"
+    local identity="$2"
+    local runtime="$3"
+    [[ -d "$bundle/Contents/Helpers" ]] || return 0
+    for helper in "$bundle/Contents/Helpers/"*(N); do
+        [[ -f "$helper" ]] || continue
+        if [[ -n "$runtime" ]]; then
+            codesign_with_timestamp_retry --force --strip-disallowed-xattrs \
+                --options runtime --timestamp --sign "$identity" "$helper"
+        else
+            /usr/bin/codesign --force --strip-disallowed-xattrs --sign "$identity" "$helper"
+        fi
+    done
+}
+
 finalize_installed_bundle_after_child() {
     local bundle="$1"
     local helper="$bundle/Contents/Library/LaunchServices/$FAN_HELPER_ID"
     local adapter="$bundle/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
     local devid
-    devid="$(developer_id_identity)"
+    devid="$(release_identity)"
 
     echo "▸ Finalizing installed signature…"
     sleep 3
@@ -163,6 +214,7 @@ finalize_installed_bundle_after_child() {
             --options runtime --timestamp --identifier "$FAN_HELPER_ID" --sign "$devid" "$helper"
         [[ -f "$adapter" ]] && codesign_with_timestamp_retry --force --strip-disallowed-xattrs \
             --options runtime --timestamp --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$devid" "$adapter"
+        sign_transcriber_helpers "$bundle" "$devid" runtime
         codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --entitlements "$ENTITLEMENTS" --sign "$devid" "$bundle"
     elif legacy_identity_installed; then
@@ -170,12 +222,14 @@ finalize_installed_bundle_after_child() {
             --identifier "$FAN_HELPER_ID" --sign "$LEGACY_IDENTITY" "$helper"
         [[ -f "$adapter" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
             --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$LEGACY_IDENTITY" "$adapter"
+        sign_transcriber_helpers "$bundle" "$LEGACY_IDENTITY" ""
         /usr/bin/codesign --force --strip-disallowed-xattrs --sign "$LEGACY_IDENTITY" "$bundle"
     else
         [[ -f "$helper" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
             --identifier "$FAN_HELPER_ID" --sign - "$helper"
         [[ -f "$adapter" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
             --identifier "$NOW_PLAYING_ADAPTER_ID" --sign - "$adapter"
+        sign_transcriber_helpers "$bundle" - ""
         /usr/bin/codesign --force --strip-disallowed-xattrs --sign - "$bundle"
     fi
     [[ -f "$helper" ]] && /usr/bin/codesign --verify --strict "$helper"
@@ -190,7 +244,7 @@ if (( INSTALL && ! TEST )) && [[ "${VORSSAINT_INSTALL_CHILD:-0}" != "1" ]]; then
     if (( child_status != 0 )); then
         exit "$child_status"
     fi
-    finalize_installed_bundle_after_child "/Applications/$APP_NAME.app"
+    finalize_installed_bundle_after_child "$INSTALL_DIR/$APP_NAME.app"
     exit 0
 fi
 
@@ -368,8 +422,6 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Shelf/ShelfFilePromiseTransfer.swift
         Sources/Vorssaint/Core/ShelfPromiseDeliveryStrings.swift
         Sources/Vorssaint/Services/Finder/FinderRenameSupport.swift
-        Sources/Vorssaint/Services/Update/UpdateInstallerSupport.swift
-        Sources/Vorssaint/Services/Update/UpdateServiceSupport.swift
         Sources/Vorssaint/Services/InstalledApps.swift
         Sources/Vorssaint/Services/LaunchAtLoginSupport.swift
         Sources/Vorssaint/UI/Settings/SettingsSearchSupport.swift
@@ -419,6 +471,12 @@ if (( TEST )); then
         Sources/Vorssaint/Services/SuperKey/SuperKeySupport.swift
         Sources/Vorssaint/Services/SuperKey/SuperKeyMappingGuard.swift
         Sources/Vorssaint/Core/SuperKeyStrings.swift
+        Sources/Vorssaint/Services/Update/UpdateShowcaseMedia.swift
+        Sources/Vorssaint/Core/KeyboardLayoutGlyph.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutSwitcherSupport.swift
+        Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
+        Sources/Vorssaint/Services/YouTubeTranscriber/YouTubeTranscriberSupport.swift
+        Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
         Sources/Vorssaint/Services/SessionActivity.swift
         Sources/Vorssaint/Services/SessionActivitySupport.swift
         Sources/Vorssaint/Services/ScrollWheelSupport.swift
@@ -473,6 +531,7 @@ if (( TEST )); then
     ./build/metrics-tests "${TEST_ARGS[@]}" || test_status=$?
     if (( ${#TEST_ARGS} == 0 )); then
         ./Tests/PreferenceCleanupTests.sh || test_status=1
+        ./Tests/DeployVersionTests.sh || test_status=1
     fi
     discard_test_preferences || test_status=1
     exit $test_status
@@ -549,6 +608,66 @@ if [[ -n "$ADAPTIVE_SKIP" ]]; then
     cp "$ICON_TMP/actool.log" build/actool-failure.log 2>/dev/null || true
     echo "  adaptive icon skipped: $ADAPTIVE_SKIP (Dock falls back to AppIcon.icns)"
 fi
+fetch_transcriber_helpers() {
+    local ytdlp_url="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+    local whisper_repo="https://github.com/ggml-org/whisper.cpp.git"
+    local model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+    mkdir -p "$TRANSCRIBER_CACHE"
+
+    if [[ ! -x "$TRANSCRIBER_CACHE/yt-dlp" ]]; then
+        echo "  fetching yt-dlp…"
+        curl -fL --progress-bar -o "$TRANSCRIBER_CACHE/yt-dlp" "$ytdlp_url"
+        chmod +x "$TRANSCRIBER_CACHE/yt-dlp"
+    fi
+
+    # ffmpeg and ffprobe are not fetched. The builds in general circulation are
+    # third-party rebuilds whose configure flags, and therefore whose licence,
+    # nobody here has established, and this app is redistributed under GPL-3.0.
+    # Point the build at your own pair once you know what they are.
+    if [[ -n "${FFMPEG_DIR:-}" ]]; then
+        cp "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe" "$TRANSCRIBER_CACHE/"
+        chmod +x "$TRANSCRIBER_CACHE/ffmpeg" "$TRANSCRIBER_CACHE/ffprobe"
+    else
+        echo "  ffmpeg/ffprobe: set FFMPEG_DIR to a pair you trust; skipping"
+    fi
+
+    if [[ ! -x "$TRANSCRIBER_CACHE/whisper-cli" ]]; then
+        echo "  building whisper.cpp…"
+        local src="$TRANSCRIBER_CACHE/whisper.cpp"
+        [[ -d "$src" ]] || git clone --quiet --depth 1 "$whisper_repo" "$src"
+        cmake -B "$src/build" -S "$src" -DGGML_METAL=ON -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_METAL_EMBED_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release >/dev/null
+        cmake --build "$src/build" -j --config Release >/dev/null
+        cp "$src/build/bin/whisper-cli" "$TRANSCRIBER_CACHE/whisper-cli"
+    fi
+
+    local models="$HOME/Library/Application Support/Vorssaint/Models"
+    mkdir -p "$models"
+    if [[ ! -f "$models/ggml-large-v3-turbo.bin" ]]; then
+        echo "  fetching the whisper model (about 1.5 GB)…"
+        curl -fL --progress-bar -o "$models/ggml-large-v3-turbo.bin" "$model_url"
+    fi
+}
+
+stage_transcriber_helpers() {
+    local bundle="$1"
+    [[ -d "$TRANSCRIBER_CACHE" ]] || return 0
+    local staged=0
+    mkdir -p "$bundle/Contents/Helpers"
+    for helper in yt-dlp ffmpeg ffprobe whisper-cli; do
+        if [[ -x "$TRANSCRIBER_CACHE/$helper" ]]; then
+            cp "$TRANSCRIBER_CACHE/$helper" "$bundle/Contents/Helpers/$helper"
+            staged=1
+        fi
+    done
+    (( staged )) || rmdir "$bundle/Contents/Helpers" 2>/dev/null || true
+}
+
+if (( TRANSCRIBER )); then
+    echo "▸ Fetching transcriber helpers…"
+    fetch_transcriber_helpers
+fi
+
 echo "▸ Assembling and signing bundle…"
 STAGE_TMP="$(mktemp -d)"
 STAGE="$STAGE_TMP/$APP_NAME.app"
@@ -558,6 +677,7 @@ cp "build/$EXECUTABLE" "$STAGE/Contents/MacOS/$EXECUTABLE"
 cp "build/$FAN_HELPER_ID" "$STAGE/Contents/Library/LaunchServices/$FAN_HELPER_ID"
 mkdir -p "$STAGE/Contents/Frameworks"
 cp "build/$NOW_PLAYING_ADAPTER" "$STAGE/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
+stage_transcriber_helpers "$STAGE"
 cp Resources/now-playing.pl "$STAGE/Contents/Resources/now-playing.pl"
 cp Resources/com.vorssaint.utils.fan-control.plist \
     "$STAGE/Contents/Library/LaunchDaemons/$FAN_HELPER_ID.plist"
@@ -586,6 +706,14 @@ if (( DEV )); then
     /usr/libexec/PlistBuddy -c "Add :VorssaintBuildCommit string '$SHA · $(date '+%Y-%m-%d %H:%M')'" "$STAGE/Contents/Info.plist"
     echo "  stamped dev build: $SHA"
 fi
+if [[ -n "${VORSSAINT_MARKETING_VERSION:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VORSSAINT_MARKETING_VERSION" \
+        "$STAGE/Contents/Info.plist"
+fi
+if [[ -n "${VORSSAINT_BUILD_NUMBER:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VORSSAINT_BUILD_NUMBER" \
+        "$STAGE/Contents/Info.plist"
+fi
 FAN_HELPER_VERSION="$(
     export LC_ALL=C
     /usr/bin/shasum -a 256 \
@@ -613,6 +741,8 @@ fi
 xattr -c -r "$STAGE" 2>/dev/null || true
 
 # Signing, in order of preference:
+#   0. VORSSAINT_SIGNING_IDENTITY, when set, signed exactly as 1 below. A local
+#      deploy passes the developer's own certificate this way.
 #   1. Developer ID Application — the real, Apple-issued identity used for
 #      notarized releases. Signed with the hardened runtime (required for
 #      notarization), the app's entitlements and a secure timestamp. Gives a
@@ -622,7 +752,7 @@ xattr -c -r "$STAGE" 2>/dev/null || true
 #      as a fallback so contributors without a Developer ID still get a constant
 #      designated requirement across their local builds.
 #   3. Ad-hoc — fresh clone with no identity at all.
-DEVID="$(developer_id_identity)"
+DEVID="$(release_identity)"
 codesign_app() {
     local target="$1"
     if [[ -n "$DEVID" ]]; then
@@ -668,7 +798,7 @@ sign_bundle() {
     local adapter="$bundle/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
 
     if [[ -n "$DEVID" ]]; then
-        echo "  signing with Developer ID (hardened runtime): $DEVID"
+        echo "  signing with hardened runtime: $DEVID"
     elif legacy_identity_installed; then
         echo "  signing with legacy self-signed identity: $LEGACY_IDENTITY"
     else
@@ -760,19 +890,20 @@ fi
 echo "✓ Bundle ready: $BUILD_STAGE"
 
 if (( INSTALL )); then
-    echo "▸ Installing into /Applications…"
+    echo "▸ Installing into $INSTALL_DIR…"
     stop_process "$EXECUTABLE"
     # Remove the pre-rename apps so two menu bar items never coexist. Same bundle
     # id, so macOS keeps the granted permissions for the new bundle.
     for legacy in "Vorss:Vorss" "Vorssaint Utils:VorssaintUtils"; do
         name="${legacy%%:*}"; proc="${legacy##*:}"
-        if [[ -d "/Applications/$name.app" ]]; then
+        if [[ -d "$INSTALL_DIR/$name.app" ]]; then
             stop_process "$proc"
-            rm -rf "/Applications/$name.app"
+            rm -rf "$INSTALL_DIR/$name.app"
             echo "  (legacy $name.app removed)"
         fi
     done
-    INSTALL_DEST="/Applications/$APP_NAME.app"
+    mkdir -p "$INSTALL_DIR"
+    INSTALL_DEST="$INSTALL_DIR/$APP_NAME.app"
     rm -rf "$INSTALL_DEST"
     ditto --noextattr --noqtn "$STAGE" "$INSTALL_DEST"
     sign_installed_bundle "$INSTALL_DEST"

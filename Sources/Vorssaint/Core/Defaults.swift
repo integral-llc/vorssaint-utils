@@ -106,8 +106,6 @@ enum DefaultsKey {
     static let middleClickEnabled = "middleClickEnabled"  // three-finger PHYSICAL click on the trackpad acts as a middle click
     static let middleClickTapFingers = "middleClickTapFingers"  // 0 = off (default); 3 or 4 = a light tap with that many fingers also middle-clicks (issue #161)
     static let previewSize = "previewSize"                // app switcher + dock preview thumbnail size
-    static let autoCheckUpdates = "autoCheckUpdates"
-    static let includeBetaUpdates = "includeBetaUpdates"
     static let releaseNotesOnUpdate = "releaseNotesOnUpdate" // show What's New after an update
     static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
     static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
@@ -233,6 +231,16 @@ enum DefaultsKey {
     static let keyboardDebounceEnabled = "keyboardDebounceEnabled"
     static let keyboardDebounceWindowMs = "keyboardDebounceWindowMs"
     static let keyboardDebounceKeyWindows = "keyboardDebounceKeyWindows" // comma-separated keyCode:ms
+    static let layoutSwitcherEnabled = "layoutSwitcherEnabled"
+    static let layoutSwitcherMinimumWordLength = "layoutSwitcherMinimumWordLength"
+    static let layoutSwitcherAutomatic = "layoutSwitcherAutomatic" // correct a finished word unasked
+    static let layoutSwitcherShortcut = "layoutSwitcherShortcut"   // GlobalShortcut storage value
+    static let panelControlLayoutSwitcher = "panelControlLayoutSwitcher"
+    static let transcriberLocation = "transcriberLocation"       // TranscriptionLocation.rawValue
+    static let transcriberRemoteHost = "transcriberRemoteHost"   // host of a whisper.cpp server
+    static let transcriberModel = "transcriberModel"             // file name under Models/
+    static let transcriberKeepAudio = "transcriberKeepAudio"     // keep the extracted mp3
+    static let transcriberOutputFolder = "transcriberOutputFolder" // empty means Downloads
     static let panelUtilityCleaning = "panelUtilityCleaning"
     static let cleaningModeKeepScreenVisible = "cleaningModeKeepScreenVisible"
     static let panelUtilityURLCleaner = "panelUtilityURLCleaner"
@@ -406,7 +414,6 @@ enum DefaultsKey {
     static let panelDiskOrder = "panelDiskOrder"
     static let panelPowerOrder = "panelPowerOrder"
     static let panelNavigationEnabled = "panelNavigationEnabled" // legacy: the panel always navigates by sections since 3.1.8
-    static let updateLastInstallFailure = "updateLastInstallFailure" // last installer step that failed (fail-copy etc.)
     static let windowLayoutHiddenActions = "windowLayoutHiddenActions" // comma-separated action ids hidden from the grid
     static let windowLayoutWindowGap = "windowLayoutWindowGap" // px between adjacent snapped windows
     static let windowLayoutScreenGap = "windowLayoutScreenGap" // px between a snapped window and the visible frame edge
@@ -717,7 +724,6 @@ enum DefaultsKey {
     static let radialMenuProfiles = "radialMenuProfiles"  // Data: [RadialMenuProfile] JSON
 
     // Dev-build only: force the "update available" UI for local testing.
-    static let simulateUpdate = "simulateUpdate"
     static let simulateBetaUI = "simulateBetaUI"
 
     /// Features hub availability layer, one key per AppFeature raw value.
@@ -742,16 +748,31 @@ enum UpdateHighlightsInfo {
     static let releaseVersion = "3.4.0-beta.1"
 
     static func matchesRelease(_ appVersion: String) -> Bool {
-        guard let version = UpdateServiceSupport.SemanticVersion(raw: appVersion),
-              let release = UpdateServiceSupport.SemanticVersion(raw: releaseVersion),
-              (version.major, version.minor, version.patch) == (release.major, release.minor, release.patch),
-              version.prerelease.count == 2, version.prerelease[0].description == "beta",
-              let number = Int(version.prerelease[1].description) else { return false }
+        guard let version = versionParts(appVersion),
+              let release = versionParts(releaseVersion),
+              version.core == release.core,
+              version.prerelease.count == 2, version.prerelease[0] == "beta",
+              let number = Int(version.prerelease[1]) else { return false }
         return number >= 1
     }
 
     static func shouldShow(appVersion: String, lastSeenVersion: String?) -> Bool {
         matchesRelease(appVersion) && lastSeenVersion != releaseVersion
+    }
+
+    /// A version such as v3.4.0-beta.2+42 as its major, minor and patch plus its
+    /// pre-release identifiers, with the build part dropped. Nil with no numbers.
+    private static func versionParts(_ raw: String) -> (core: (Int, Int, Int), prerelease: [String])? {
+        let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\r\n"))
+        let withoutBuild = trimmed.split(separator: "+", maxSplits: 1,
+                                         omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        let parts = withoutBuild.split(separator: "-", maxSplits: 1,
+                                       omittingEmptySubsequences: false).map(String.init)
+        let numbers = (parts.first ?? "").split(separator: ".").compactMap { Int($0) }
+        guard !numbers.isEmpty else { return nil }
+        let prerelease = parts.count > 1 ? parts[1].split(separator: ".").map(String.init) : []
+        return ((numbers[0], numbers.count > 1 ? numbers[1] : 0, numbers.count > 2 ? numbers[2] : 0),
+                prerelease)
     }
 }
 
@@ -890,6 +911,9 @@ enum Defaults {
     static let allowedBatteryLimits = [0, 5, 10, 15, 20]
     static let allowedMonitorIntervals = [1, 2, 5]
     static let defaultKeyboardDebounceWindowMs = 5
+    static let defaultLayoutSwitcherWordLength = 3
+    static let defaultTranscriberModel = "ggml-large-v3-turbo.bin"
+    static let allowedLayoutSwitcherWordLengthRange = 2...8
     static let allowedKeyboardDebounceWindowRange = 0...500
     static let defaultMouseClickDebounceWindowMs = 25
     static let allowedMouseClickDebounceWindowRange = 5...100
@@ -990,8 +1014,6 @@ enum Defaults {
         DefaultsKey.middleClickEnabled: false,
         DefaultsKey.middleClickTapFingers: 0,
         DefaultsKey.previewSize: "normal",
-        DefaultsKey.autoCheckUpdates: true,
-        DefaultsKey.includeBetaUpdates: false,
         DefaultsKey.releaseNotesOnUpdate: true,
         DefaultsKey.updateShowcaseIntroVersion: "",
         DefaultsKey.updateShowcaseMediaOverride: "",
@@ -1154,6 +1176,14 @@ enum Defaults {
         DefaultsKey.keyboardDebounceEnabled: false,
         DefaultsKey.keyboardDebounceWindowMs: defaultKeyboardDebounceWindowMs,
         DefaultsKey.keyboardDebounceKeyWindows: "",
+        DefaultsKey.layoutSwitcherEnabled: false,
+        DefaultsKey.layoutSwitcherMinimumWordLength: defaultLayoutSwitcherWordLength,
+        DefaultsKey.layoutSwitcherAutomatic: false,
+        DefaultsKey.transcriberLocation: TranscriptionLocation.local.rawValue,
+        DefaultsKey.transcriberRemoteHost: "",
+        DefaultsKey.transcriberModel: defaultTranscriberModel,
+        DefaultsKey.transcriberKeepAudio: false,
+        DefaultsKey.transcriberOutputFolder: "",
         DefaultsKey.panelUtilityCleaning: true,
         DefaultsKey.cleaningModeKeepScreenVisible: false,
         DefaultsKey.panelUtilityURLCleaner: true,
@@ -1188,6 +1218,7 @@ enum Defaults {
         DefaultsKey.panelControlShelf: true,
         DefaultsKey.panelControlWindowMaximize: true,
         DefaultsKey.panelControlKeyDebounce: true,
+        DefaultsKey.panelControlLayoutSwitcher: true,
         DefaultsKey.panelControlDockClick: true,
         DefaultsKey.panelControlDockClickHide: true,
         DefaultsKey.panelControlDockClickCycle: true,
@@ -1386,6 +1417,7 @@ enum Defaults {
         DefaultsKey.commandBarFileScopes: "",
         DefaultsKey.commandBarFileIgnores: "",
         DefaultsKey.commandBarShortcut: GlobalShortcut.commandBarDefault.storageValue,
+        DefaultsKey.layoutSwitcherShortcut: GlobalShortcut.layoutSwitcherDefault.storageValue,
         DefaultsKey.commandBarPositionOffset: "",
         DefaultsKey.panelUtilityCommandBar: true,
         DefaultsKey.scratchpadRetention: ScratchpadRetention.never.rawValue,
@@ -1513,7 +1545,6 @@ enum Defaults {
         migrateBatteryTemperatureVisibility(in: defaults)
         defaults.register(defaults: registeredDefaults)
         defaults.register(defaults: AppFeature.availabilityDefaults)
-        activateBetaChannelIfRunningBeta(in: defaults)
         migrateLegacyMenuBarTemperatureMetric(in: defaults)
         migrateLegacySwitcherWindowShortcut(in: defaults)
         migrateLegacyKeyboardDebounceWindow(in: defaults)
@@ -1531,22 +1562,6 @@ enum Defaults {
         guard defaults.object(forKey: DefaultsKey.monitorPwrTemperature) == nil else { return }
         defaults.set(defaults.object(forKey: DefaultsKey.monitorSysTemps) as? Bool ?? true,
                      forKey: DefaultsKey.monitorPwrTemperature)
-    }
-
-    /// When the user installs or runs a beta pre-release, activate the beta
-    /// channel default once so they seamlessly receive subsequent beta builds.
-    static func activateBetaChannelIfRunningBeta(in defaults: UserDefaults,
-                                                 version: String = AppInfo.version,
-                                                 isBeta: Bool = AppInfo.isBeta) {
-        let isPre = isBeta || {
-            let v = version.lowercased()
-            return v.contains("-beta") || v.contains("-rc") || v.contains("-alpha")
-        }()
-        guard isPre else { return }
-        let markerKey = "betaChannelActivatedFor.\(version)"
-        guard !defaults.bool(forKey: markerKey) else { return }
-        defaults.set(true, forKey: markerKey)
-        defaults.set(true, forKey: DefaultsKey.includeBetaUpdates)
     }
 
     /// The downloads cleanup for a messaging app used to sit in Cleaner for
@@ -1798,6 +1813,10 @@ enum Defaults {
     /// else means the option is off.
     static func sanitizedMiddleClickTapFingers(_ raw: Int) -> Int {
         raw == 3 || raw == 4 ? raw : 0
+    }
+
+    static func sanitizedLayoutSwitcherWordLength(_ length: Int) -> Int {
+        allowedLayoutSwitcherWordLengthRange.contains(length) ? length : defaultLayoutSwitcherWordLength
     }
 
     static func sanitizedKeyboardDebounceWindow(_ milliseconds: Int) -> Int {

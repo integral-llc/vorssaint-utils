@@ -29,7 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var updateHighlightsWindow: NSWindow?
     private var supportIntroCanClose = false
     private var updateShowcaseWindow: NSWindow?
-    private var updatePreviewWindow: NSWindow?
     private let popoverOpenDuration: TimeInterval = 0.18
     private let popoverCloseDuration: TimeInterval = 0.14
 
@@ -126,7 +125,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if AppFeature.monitorPower.isAvailable, PowerSampler.hasInternalBattery {
             MaxCapacityProbe.shared.refreshIfStale()
         }
-        UpdateService.shared.startAutomaticChecks()
         NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive),
                                                name: NSApplication.didBecomeActiveNotification, object: nil)
 
@@ -1007,10 +1005,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     @objc private func appBecameActive() {
-        // Coming back to the app is a good moment to surface a fresh release.
-        // (Menu bar icon recovery happens on a deliberate reopen, not here: this
-        // fires on every activation, so rebuilding here would cause churn/flicker.)
-        UpdateService.shared.checkIfStale()
+        // Menu bar icon recovery happens on a deliberate reopen, not here: this
+        // fires on every activation, so rebuilding here would cause churn/flicker.
         restoreAfterAppUpdateHandoff()
     }
 
@@ -1097,16 +1093,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         completions.forEach { $0() }
     }
 
-    // The SwiftUI panel reports which monitor sections are actually visible; the
-    // popover callback only handles update freshness.
+    // The SwiftUI panel reports which monitor sections are actually visible, so
+    // this callback only announces the panel and pauses transient GPU reads.
     func popoverWillShow(_ notification: Notification) {
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .menuPanelWillShow, object: nil)
         }
         SystemMonitor.shared.suppressGPUReadsForTransientUI()
-        if !popoverIsSwitchingAnchor {
-            UpdateService.shared.checkIfStale()
-        }
     }
 
     func popoverShouldClose(_ popover: NSPopover) -> Bool {
@@ -1215,10 +1208,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             menu.addItem(shelfItem)
         }
 
-        let updatesItem = NSMenuItem(title: strings.menuCheckUpdates, action: #selector(menuCheckUpdates), keyEquivalent: "")
-        updatesItem.target = self
-        menu.addItem(updatesItem)
-
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: strings.menuQuit, action: #selector(quitApp), keyEquivalent: "q")
@@ -1255,11 +1244,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     @objc private func menuOpenShelf() {
         ShelfService.shared.expandDocked()
-    }
-
-    @objc private func menuCheckUpdates() {
-        UpdateService.shared.check(manual: true)
-        openSettingsWindow()
     }
 
     @objc private func quitApp() {
@@ -1821,49 +1805,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         window.setFrameOrigin(NSPoint(x: x.rounded(), y: y.rounded()))
     }
 
-    /// The pre-install update preview, shown before any download from BOTH the
-    /// Settings install button and the menu panel's update banner (the blue
-    /// button most people use), so the changelog is always seen first. In the
-    /// Developer build `downloadAndInstall()` is a no-op, so confirming is safe.
-    func showUpdatePreview() {
-        guard case let .available(version) = UpdateService.shared.state else { return }
-        closePopover()
-        if let window = updatePreviewWindow {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let host = NSHostingController(rootView: UpdatePreviewView(
-            version: version,
-            notes: UpdateService.shared.availableNotes,
-            onUpdate: { [weak self] in
-                self?.updatePreviewWindow?.close()
-                UpdateService.shared.downloadAndInstall()
-            },
-            onCancel: { [weak self] in
-                self?.updatePreviewWindow?.close()
-            }
-        ))
-        host.sizingOptions = .preferredContentSize
-        let window = NSWindow(contentViewController: host)
-        window.title = L10n.shared.s.tabReleaseNotes
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.isMovableByWindowBackground = true
-        window.delegate = self
-        centerIntroWindow(window)
-        updatePreviewWindow = window
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        DispatchQueue.main.async { [weak self, weak window] in
-            guard let self, let window, window === self.updatePreviewWindow else { return }
-            self.centerIntroWindow(window)
-        }
-    }
-
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         if sender === settingsWindow {
             let minFrame = sender.frameRect(forContentRect: NSRect(
@@ -1933,9 +1874,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             updateHighlightsWindow = nil
             guard !isTerminating else { return }
             markUpdateHighlightsSeen()
-        }
-        if window === updatePreviewWindow {
-            updatePreviewWindow = nil
         }
     }
 

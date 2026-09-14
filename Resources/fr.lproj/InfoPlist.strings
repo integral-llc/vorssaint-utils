@@ -14,11 +14,10 @@
 "NSCameraUsageDescription" = "Vorssaint affiche votre caméra uniquement dans la fenêtre d'aperçu que vous ouvrez, pour vérifier votre apparence avant un appel. Rien n'est enregistré et rien ne quitte votre Mac.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "Vorssaint consulte les métadonnées locales de Téléchargements pour examiner, organiser ou placer dans la Corbeille uniquement les fichiers WhatsApp confirmés que vous choisissez.";
-
+"NSDownloadsFolderUsageDescription" = "Vorssaint enregistre ici les transcriptions que vous lancez et consulte les métadonnées locales pour examiner, organiser ou placer dans la Corbeille uniquement les fichiers WhatsApp confirmés que vous choisissez.";
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "Vorssaint organise les téléchargements WhatsApp confirmés dans un dossier de destination que vous choisissez explicitement.";
-"NSDocumentsFolderUsageDescription" = "Vorssaint organise les téléchargements WhatsApp confirmés dans un dossier de destination que vous choisissez explicitement.";
-"NSNetworkVolumesUsageDescription" = "Vorssaint organise les téléchargements WhatsApp confirmés dans un dossier de destination que vous choisissez explicitement.";
-"NSRemovableVolumesUsageDescription" = "Vorssaint organise les téléchargements WhatsApp confirmés dans un dossier de destination que vous choisissez explicitement.";
+"NSDesktopFolderUsageDescription" = "Vorssaint n’utilise un dossier ici que lorsque vous le choisissez : pour transcrire un fichier que vous lui confiez et enregistrer la transcription, ou pour organiser les téléchargements WhatsApp confirmés.";
+"NSDocumentsFolderUsageDescription" = "Vorssaint n’utilise un dossier ici que lorsque vous le choisissez : pour transcrire un fichier que vous lui confiez et enregistrer la transcription, ou pour organiser les téléchargements WhatsApp confirmés.";
+"NSNetworkVolumesUsageDescription" = "Vorssaint n’utilise un dossier ici que lorsque vous le choisissez : pour transcrire un fichier que vous lui confiez et enregistrer la transcription, ou pour organiser les téléchargements WhatsApp confirmés.";
+"NSRemovableVolumesUsageDescription" = "Vorssaint n’utilise un dossier ici que lorsque vous le choisissez : pour transcrire un fichier que vous lui confiez et enregistrer la transcription, ou pour organiser les téléchargements WhatsApp confirmés.";
 "NSCalendarsFullAccessUsageDescription" = "Affiche vos prochains rendez-vous en haut de l’écran. Les événements du calendrier restent sur ce Mac.";

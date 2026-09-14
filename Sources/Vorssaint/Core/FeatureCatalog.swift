@@ -17,7 +17,7 @@ enum AppFeature: String, CaseIterable {
     case switcher, dockPreview, dockClick, windowMaximizer, windowLayout, autoQuit
     // Mouse and keyboard
     case scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration, mouseNavigation, mouseButtonShortcuts, middleClick,
-         mouseClickDebounce, keyboardDebounce, textSnippets, superKey, quitWindowProtection
+         mouseClickDebounce, keyboardDebounce, textSnippets, layoutSwitcher, superKey, quitWindowProtection
     // Clipboard and files
     case clipboardHistory, pastePlain, finderCutPaste, finderRename, shelf, urlCleaner,
          diskImageInstaller
@@ -29,6 +29,7 @@ enum AppFeature: String, CaseIterable {
     case quickLauncher, quickToggles, colorPicker, screenOCR, cleaningMode, mediaTools,
          cleaner, uninstaller, homebrew, appUpdates, screenshot, cameraPreview, radialMenu, scratchpad,
          commandBar, screenRecorder, killProcess, notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics, notchQueue, notchDownloads
+    case youtubeTranscriber
     // System monitor, one entry per metric family (temperatures live with
     // their parent metric: CPU temp with CPU, battery temp with power).
     case monitorCPU, monitorGPU, monitorMemory, monitorNetwork, monitorDisk, monitorPower, fanControl
@@ -77,7 +78,8 @@ extension AppFeature {
                     && !WindowEdgeSnapZone.enabledZones(
                         from: edgeSnapDisabledZones
                     ).isEmpty)
-        case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder:
+        case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder,
+             .youtubeTranscriber:
             return false
         default:
             return true
@@ -98,7 +100,8 @@ extension AppFeature {
         case .switcher, .dockPreview, .dockClick, .windowMaximizer, .windowLayout, .autoQuit:
             return .windowsDock
         case .scrollInverter, .focusFollowsMouse, .smoothScroll, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts, .middleClick,
-             .keyboardDebounce, .textSnippets, .superKey, .quitWindowProtection, .mouseClickDebounce:
+             .keyboardDebounce, .textSnippets, .layoutSwitcher, .superKey, .quitWindowProtection,
+             .mouseClickDebounce:
             return .mouseKeyboard
         case .clipboardHistory, .pastePlain, .finderCutPaste, .finderRename, .shelf, .urlCleaner,
              .diskImageInstaller:
@@ -110,6 +113,8 @@ extension AppFeature {
         case .quickLauncher, .quickToggles, .colorPicker, .screenOCR, .cleaningMode, .mediaTools,
              .cleaner, .uninstaller, .homebrew, .appUpdates, .screenshot, .cameraPreview, .radialMenu,
              .scratchpad, .commandBar, .screenRecorder, .killProcess, .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories, .notchLyrics, .notchQueue, .notchDownloads:
+            return .tools
+        case .youtubeTranscriber:
             return .tools
         case .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .fanControl:
@@ -134,6 +139,7 @@ extension AppFeature {
         case .middleClick: return "computermouse"
         case .keyboardDebounce: return "keyboard"
         case .textSnippets: return "text.append"
+        case .layoutSwitcher: return "character.cursor.ibeam"
         case .superKey:
             return SuperKeySource.sanitized(
                 UserDefaults.standard.string(forKey: DefaultsKey.superKeySource)
@@ -181,6 +187,7 @@ extension AppFeature {
         case .scratchpad: return "note.text"
         case .commandBar: return "command"
         case .killProcess: return "xmark.octagon"
+        case .youtubeTranscriber: return "text.bubble"
         case .monitorCPU: return "cpu"
         case .monitorGPU: return "rectangle.connected.to.line.below"
         case .monitorMemory: return "memorychip"
@@ -231,6 +238,7 @@ extension AppFeature {
         case .quitWindowProtection:
             return [DefaultsKey.quitProtectionQuitEnabled, DefaultsKey.quitProtectionCloseEnabled]
         case .textSnippets: return [DefaultsKey.textSnippetsEnabled, DefaultsKey.snippetLibraryEnabled]
+        case .layoutSwitcher: return [DefaultsKey.layoutSwitcherEnabled]
         case .superKey: return [DefaultsKey.superKeyEnabled]
         case .mouseClickDebounce: return [DefaultsKey.mouseClickDebounceEnabled]
         case .notchGestures: return [DefaultsKey.notchGesturesEnabled]
@@ -258,7 +266,7 @@ extension AppFeature {
         case .windowLayout, .diskImageInstaller, .mixer, .micMute, .keepAwake,
              .quickLauncher, .quickToggles, .colorPicker, .screenOCR, .cleaningMode, .mediaTools,
              .cleaner, .uninstaller, .homebrew, .appUpdates, .screenshot, .cameraPreview, .scratchpad,
-             .commandBar, .screenRecorder, .killProcess,
+             .commandBar, .screenRecorder, .killProcess, .youtubeTranscriber,
              .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .fanControl:
             return []
@@ -281,7 +289,7 @@ extension AppFeature {
         case .mouseAcceleration:
             return []
         case .scrollInverter, .focusFollowsMouse, .smoothScroll, .mouseNavigation, .mouseButtonShortcuts, .middleClick,
-             .keyboardDebounce, .textSnippets, .superKey, .mouseClickDebounce,
+             .keyboardDebounce, .textSnippets, .layoutSwitcher, .superKey, .mouseClickDebounce,
              .dockClick, .windowMaximizer, .windowLayout,
              .autoQuit, .quitWindowProtection, .cleaningMode, .pastePlain, .radialMenu,
              // The bar reads other apps' menus and windows and types at the
@@ -305,6 +313,9 @@ extension AppFeature {
         case .keepAwake: return [.accessibility]
         case .brightness: return [.accessibility]
         case .cleaner: return [.fullDiskAccess, .filesAndFolders, .notifications]
+        // Writing the transcript into Downloads, or the folder picked for it,
+        // is what makes macOS ask; it asks on that first write, not up front.
+        case .youtubeTranscriber: return [.filesAndFolders]
         case .uninstaller: return [.fullDiskAccess, .automationFinder]
         case .homebrew: return [.automationTerminal, .appManagement]
         case .appUpdates: return [.notifications, .appManagement]
@@ -343,7 +354,7 @@ extension AppFeature {
         Dictionary(uniqueKeysWithValues: allCases.map {
             ($0.availabilityKey,
              $0 != .focusFollowsMouse && $0 != .fanControl && $0 != .diskImageInstaller
-                && $0 != .killProcess)
+                && $0 != .killProcess && $0 != .layoutSwitcher && $0 != .youtubeTranscriber)
         })
     }
 

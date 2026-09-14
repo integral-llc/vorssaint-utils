@@ -219,7 +219,6 @@ struct Strings {
     let adminPromptClamshellOn: String
     let adminPromptClamshellOff: String
     let adminPromptRecover: String
-    let adminPromptUpdate: String
     let adminPromptSudoersInstall: String
     let adminPromptSudoersRemove: String
 
@@ -724,26 +723,8 @@ struct Strings {
     let mixerHiddenCountLabel: String
     let mixerHideFromList: String
 
-    // MARK: Settings — updates
-    let updatesSection: String
-    let autoCheckToggle: String
-    let includeBetaUpdatesToggle: String
-    let includeBetaUpdatesCaption: String
+    // MARK: Beta badge
     let betaBadgeLabel: String
-    let checkNowButton: String
-    let updateChecking: String
-    let updateUpToDate: String
-    let updateAvailablePrefix: String  // + version
-    let updateInstallButton: String
-    let updateDownloading: String
-    let updateInstalling: String
-    let updateFailedPrefix: String
-    let updateLastChecked: String
-    let updateNotifyTitle: String
-    let updateInstallFailedBody: String
-    let updateNeedsApplicationsTitle: String
-    let updateNeedsApplicationsBody: String
-    let menuCheckUpdates: String
 
     // MARK: Permissions (shared by Settings & onboarding)
     let permissionRequired: String
@@ -887,8 +868,6 @@ struct Strings {
     let monitorGraphsCaption: String
 
     // MARK: Update notification + onboarding menu bar setup
-    let updateBannerTitle: String
-    let updateBannerAction: String
     let obStepMenuBarTitle: String
     let obStepMenuBarBody: String
     let obStepMenuBarNote: String
@@ -1270,7 +1249,6 @@ extension Strings {
         adminPromptClamshellOn: "O Vorssaint precisa da sua senha para manter o Mac ativo com a tampa fechada.",
         adminPromptClamshellOff: "O Vorssaint precisa da sua senha para reativar a suspensão normal do Mac.",
         adminPromptRecover: "O Vorssaint foi encerrado com a suspensão do Mac desativada. Digite a senha para restaurar a suspensão normal.",
-        adminPromptUpdate: "O Vorssaint precisa da sua senha para instalar a atualização.",
         adminPromptSudoersInstall: "O Vorssaint vai criar uma regra restrita (somente pmset disablesleep) para alternar a tampa fechada sem pedir senha. Esta é a única vez que a senha será necessária.",
         adminPromptSudoersRemove: "O Vorssaint vai remover a regra de tampa fechada sem senha.",
 
@@ -1754,25 +1732,7 @@ extension Strings {
         mixerHiddenCountLabel: "Escondidos",
         mixerHideFromList: "Esconder da lista",
 
-        updatesSection: "Atualizações",
-        autoCheckToggle: "Procurar atualizações automaticamente",
-        includeBetaUpdatesToggle: "Receber atualizações beta",
-        includeBetaUpdatesCaption: "Versões beta incluem novidades em desenvolvimento e podem apresentar instabilidades ou comportamentos incompletos.",
         betaBadgeLabel: "Beta",
-        checkNowButton: "Procurar agora",
-        updateChecking: "Procurando…",
-        updateUpToDate: "Você está na versão mais recente.",
-        updateAvailablePrefix: "Atualização disponível:",
-        updateInstallButton: "Baixar e instalar",
-        updateDownloading: "Baixando atualização…",
-        updateInstalling: "Instalando e reiniciando…",
-        updateFailedPrefix: "Não foi possível verificar:",
-        updateLastChecked: "Última verificação:",
-        updateNotifyTitle: "Atualização do Vorssaint",
-        updateInstallFailedBody: "A atualização foi baixada, mas não pôde ser aplicada. Baixe a versão mais recente na página de releases do GitHub e arraste o app por cima do atual.",
-        updateNeedsApplicationsTitle: "Mova o Vorssaint para Aplicativos",
-        updateNeedsApplicationsBody: "O app está rodando de um lugar que não dá para atualizar, como a imagem de disco ou uma área temporária do sistema. Arraste o Vorssaint para a pasta Aplicativos, abra de lá e tente de novo.",
-        menuCheckUpdates: "Procurar atualizações…",
 
         permissionRequired: "Permissão necessária",
         permissionAccessibility: "Acessibilidade",
@@ -1908,8 +1868,6 @@ extension Strings {
         monitorGraphsSection: "Gráficos",
         monitorGraphsCaption: "Escolha quais métricas mostram um gráfico ao longo do tempo.",
 
-        updateBannerTitle: "Atualização disponível",
-        updateBannerAction: "Atualizar",
         obStepMenuBarTitle: "Métricas na barra de menus",
         obStepMenuBarBody: "Escolha o que mostrar ao lado do ícone. A prévia acima muda em tempo real.",
         obStepMenuBarNote: "Novidade: blocos de Rede e Energia e gráficos no painel. Ajuste tudo depois em Ajustes › Monitor.",
@@ -1920,7 +1878,7 @@ extension Strings {
         menuBarSpacingStandard: "Padrão",
         menuBarSpacingCompact: "Compacto",
         menuBarHideIconToggle: "Ocultar o ícone do app enquanto houver métricas",
-        menuBarHideIconCaption: "O ícone volta sozinho quando as métricas saem da barra e quando há algo a avisar (atualização pronta ou microfone silenciado).",
+        menuBarHideIconCaption: "O ícone volta sozinho quando as métricas saem da barra e enquanto o microfone está silenciado.",
         monitorLabelStyleLabel: "Rótulos",
         menuBarLabelStyleCompact: "Compactos",
         menuBarLabelStyleClassic: "Clássicos",
@@ -2282,7 +2240,6 @@ extension Strings {
         adminPromptClamshellOn: "Vorssaint needs your password to keep the Mac going with the lid closed.",
         adminPromptClamshellOff: "Vorssaint needs your password to restore the Mac’s normal sleep.",
         adminPromptRecover: "Vorssaint quit while the Mac’s sleep was disabled. Enter the password to restore normal sleep.",
-        adminPromptUpdate: "Vorssaint needs your password to install the update.",
         adminPromptSudoersInstall: "Vorssaint will create a restricted rule (pmset disablesleep only) to toggle closed-lid mode without asking for a password. This is the only time the password is needed.",
         adminPromptSudoersRemove: "Vorssaint will remove the password-free closed-lid rule.",
 
@@ -2766,25 +2723,7 @@ extension Strings {
         mixerHiddenCountLabel: "Hidden",
         mixerHideFromList: "Hide from the list",
 
-        updatesSection: "Updates",
-        autoCheckToggle: "Check for updates automatically",
-        includeBetaUpdatesToggle: "Receive beta updates",
-        includeBetaUpdatesCaption: "Beta versions include features in development and may contain bugs or incomplete behavior.",
         betaBadgeLabel: "Beta",
-        checkNowButton: "Check now",
-        updateChecking: "Checking…",
-        updateUpToDate: "You’re on the latest version.",
-        updateAvailablePrefix: "Update available:",
-        updateInstallButton: "Download and install",
-        updateDownloading: "Downloading update…",
-        updateInstalling: "Installing and restarting…",
-        updateFailedPrefix: "Couldn’t check:",
-        updateLastChecked: "Last checked:",
-        updateNotifyTitle: "Vorssaint update",
-        updateInstallFailedBody: "The update was downloaded but could not be applied. Download the latest version from the GitHub releases page and drag the app over the current one.",
-        updateNeedsApplicationsTitle: "Move Vorssaint to Applications",
-        updateNeedsApplicationsBody: "The app is running from a place that cannot be updated, such as the disk image or a temporary system location. Drag Vorssaint to the Applications folder, open it from there and try again.",
-        menuCheckUpdates: "Check for updates…",
 
         permissionRequired: "Permission required",
         permissionAccessibility: "Accessibility",
@@ -2920,8 +2859,6 @@ extension Strings {
         monitorGraphsSection: "Graphs",
         monitorGraphsCaption: "Choose which metrics show a graph over time.",
 
-        updateBannerTitle: "Update available",
-        updateBannerAction: "Update",
         obStepMenuBarTitle: "Metrics in the menu bar",
         obStepMenuBarBody: "Pick what to show next to the icon. The preview above updates live.",
         obStepMenuBarNote: "New: Network and Power blocks and graphs in the panel. Fine-tune it all later in Settings › Monitor.",
@@ -2932,7 +2869,7 @@ extension Strings {
         menuBarSpacingStandard: "Standard",
         menuBarSpacingCompact: "Compact",
         menuBarHideIconToggle: "Hide the app icon while metrics are shown",
-        menuBarHideIconCaption: "The icon returns by itself when metrics leave the bar and when there is something to signal (an update ready or the microphone muted).",
+        menuBarHideIconCaption: "The icon returns by itself when metrics leave the bar and while the microphone is muted.",
         monitorLabelStyleLabel: "Labels",
         menuBarLabelStyleCompact: "Compact",
         menuBarLabelStyleClassic: "Classic",

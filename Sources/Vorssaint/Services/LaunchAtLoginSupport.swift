@@ -51,3 +51,15 @@ enum LaunchAtLoginSupport {
         }
     }
 }
+
+extension LaunchAtLoginSupport {
+    /// True when a login item registered from here would point at a path that
+    /// is gone by the next launch: the randomized read-only mount Gatekeeper
+    /// uses for translocated apps, or any other read-only volume such as the
+    /// mounted disk image. External writable volumes are fine, so this asks the
+    /// file system instead of guessing from the path.
+    static func runsFromImmutableLocation(appPath: String,
+                                          volumeIsReadOnly: (String) -> Bool) -> Bool {
+        appPath.contains("/AppTranslocation/") || volumeIsReadOnly(appPath)
+    }
+}

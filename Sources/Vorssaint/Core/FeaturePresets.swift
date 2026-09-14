@@ -32,7 +32,8 @@ enum FeaturePreset: String, CaseIterable, Identifiable {
         case .essential:
             return [.mixer, .keepAwake,
                     .monitorCPU, .monitorGPU, .monitorMemory,
-                    .monitorNetwork, .monitorDisk, .monitorPower]
+                    .monitorNetwork, .monitorDisk, .monitorPower,
+                    .layoutSwitcher, .youtubeTranscriber]
         case .windows:
             return [.switcher, .windowLayout, .dockPreview, .dockClick, .windowMaximizer]
         case .battery:
@@ -47,7 +48,11 @@ enum FeaturePreset: String, CaseIterable, Identifiable {
     /// Presets whose features are on-demand need none.
     var enableKeys: [String] {
         switch self {
-        case .essential, .battery:
+        case .essential:
+            // The only Essential feature that is not on-demand: installed but
+            // switched off, it registers no shortcut and does nothing.
+            return [DefaultsKey.layoutSwitcherEnabled]
+        case .battery:
             return []
         case .windows:
             return [DefaultsKey.switcherEnabled,
@@ -93,7 +98,8 @@ extension AppFeature {
              .mouseNavigation, .mouseButtonShortcuts, .mouseClickDebounce,
              .dockPreview, .dockClick, .shelf:
             return .mouse
-        case .switcher, .keyboardDebounce, .finderCutPaste, .finderRename, .superKey, .quitWindowProtection:
+        case .switcher, .keyboardDebounce, .finderCutPaste, .finderRename, .superKey,
+             .quitWindowProtection, .layoutSwitcher:
             return .keyboard
         case .textSnippets, .autoQuit:
             return .inputs
@@ -126,7 +132,7 @@ extension AppFeature {
              .musicBlock, .bluetoothSleep, .keepAwake, .brightness, .quickLauncher, .quickToggles, .colorPicker,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .fanControl,
-             .diskImageInstaller, .killProcess:
+             .diskImageInstaller, .killProcess, .youtubeTranscriber:
             return .idle
         case .appUpdates:
             // The list is on demand; only a background schedule keeps a timer.

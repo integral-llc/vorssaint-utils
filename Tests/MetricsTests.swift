@@ -1082,6 +1082,127 @@ struct MetricsTests {
                == [37: 100, 40: 0, 99: Defaults.defaultKeyboardDebounceWindowMs],
                "debounce key windows decode and sanitize stored values")
 
+        // MARK: Transcriber
+        expect(YouTubeTranscriberSupport.isLocalFile("/Users/me/clip.mp4")
+                && YouTubeTranscriberSupport.isLocalFile("~/clip.mp4")
+                && YouTubeTranscriberSupport.isLocalFile("file:///tmp/a.mp3")
+                && !YouTubeTranscriberSupport.isLocalFile("https://example.com/watch?v=1"),
+               "a dropped path is told apart from a link")
+        expectClose(YouTubeTranscriberSupport.downloadFraction(in: "[download]  42.3% of 10MiB") ?? -1,
+                    0.423, "yt-dlp progress is read off its own line")
+        expect(YouTubeTranscriberSupport.downloadFraction(in: "some other line") == nil,
+               "a line that is not progress reports none")
+        expectClose(YouTubeTranscriberSupport.transcribedSeconds(
+            in: "[00:00:12.000 --> 00:01:15.500]  hello") ?? -1,
+                    75.5, "whisper progress comes from the end of each segment")
+        expectClose(YouTubeTranscriberSupport.fraction(transcribed: 30, of: 120), 0.25,
+                    "progress is the part of the audio already decoded")
+        expect(YouTubeTranscriberSupport.fraction(transcribed: 30, of: 0) == 0,
+               "unknown duration reports no progress rather than dividing by zero")
+        expectEqual(YouTubeTranscriberSupport.normalizedTranscript(" one \n\n  two "),
+                    "one\ntwo", "a remote transcript reads like a local one")
+        // Audio must not leave the machine in the clear because the user left
+        // the scheme off.
+        expectEqual(YouTubeTranscriberSupport.remoteURL(from: "whisper.example.com",
+                                                        path: "v1/audio/transcriptions")?
+                        .absoluteString ?? "",
+                    "https://whisper.example.com/v1/audio/transcriptions",
+                    "a server typed without a scheme is reached over TLS")
+        expect(YouTubeTranscriberSupport.remoteURL(from: "http://box.local", path: "v1")?
+                .scheme == "http",
+               "a scheme the user typed on purpose is kept")
+        expect(YouTubeTranscriberSupport.remoteURL(from: "  ", path: "v1") == nil,
+               "an empty server is not a URL")
+        let cappedLog = (0..<(YouTubeTranscriberSupport.maximumLogLines + 50))
+            .reduce(into: [String]()) { log, index in
+                log = YouTubeTranscriberSupport.appending("line \(index)", to: log)
+            }
+        expect(cappedLog.count == YouTubeTranscriberSupport.maximumLogLines
+                && cappedLog.last == "line \(YouTubeTranscriberSupport.maximumLogLines + 49)",
+               "a long run keeps the tail of its log and no more")
+        expect(YouTubeTranscriberSupport.diagnose(log: ["ERROR: members-only video"],
+                                                  helper: .ytDlp, exitCode: 1) == .videoMembersOnly
+                && YouTubeTranscriberSupport.diagnose(log: ["Sign in to confirm you are not a bot"],
+                                                      helper: .ytDlp, exitCode: 1) == .helperStale
+                && YouTubeTranscriberSupport.diagnose(log: ["No space left on device"],
+                                                      helper: .ffmpeg, exitCode: 1) == .diskFull,
+               "a stopped run is read back to the reason it stopped")
+        expect(YouTubeTranscriberSupport.diagnose(log: ["something nobody has a rule for"],
+                                                  helper: .whisperCli, exitCode: 3)
+                == .helperFailed(.whisperCli, exitCode: 3),
+               "output no rule matches falls back to the exit code, not to a guess")
+        expect(YouTubeTranscriberSupport.diagnose(log: [], helper: .ytDlp, exitCode: 0) == .unknown,
+               "a run that did not fail has no failure to name")
+        expect(TranscriberHelper.ytDlp.updatesItself
+                && TranscriberHelper.allCases.filter(\.updatesItself).count == 1,
+               "yt-dlp is the only helper that replaces itself at runtime")
+        expect(YouTubeTranscriberSupport.checksum(for: "yt-dlp_macos",
+                                      in: "abc123  yt-dlp_macos\ndef456  other") == "abc123"
+                && YouTubeTranscriberSupport.checksum(for: "missing", in: "abc123  yt-dlp_macos") == nil,
+               "the release checksum is read for the asset actually being installed")
+
+        // MARK: Layout switcher
+        // Two toy layouts sharing physical keys: the pairing has to come out
+        // of what the keys produce, not out of a per-language table.
+        let qwerty: [UInt16: String] = [0: "a", 1: "s", 2: "d", 12: "q", 13: "w", 49: " "]
+        let cyrillic: [UInt16: String] = [0: "\u{444}", 1: "\u{44B}", 2: "\u{432}",
+                                          12: "\u{439}", 13: "\u{446}", 49: " "]
+        let pair = LayoutSwitcherSupport.table(from: qwerty, to: cyrillic)
+        expect(pair.mapForward("as") == "\u{444}\u{44B}"
+                && pair.mapReverse("\u{444}\u{44B}") == "as",
+               "a layout pair maps both ways from what its keys produce")
+        expect(pair.forward[" "] == nil && pair.reverse[" "] == nil,
+               "the space key never becomes part of a word pairing")
+        for word in ["as", "qw", "dad"] {
+            expect(pair.mapForward(word).flatMap(pair.mapReverse) == word,
+                   "mapping \(word) and back returns the original")
+        }
+        expect(pair.mapForward("a1") == "\u{444}1",
+               "a digit rides through a pairing instead of discarding the word")
+        expect(pair.mapForward("123") == nil,
+               "a token the layout tables never touch is not a correction")
+        // A key whose glyph is unchanged between the layouts carries no
+        // information about which one was meant, so it must not be paired.
+        let sameGlyph = LayoutSwitcherSupport.table(from: [0: "a"], to: [0: "a"])
+        expect(sameGlyph.forward.isEmpty && sameGlyph.shared.contains("a"),
+               "an unchanged key is shared, not a pairing")
+        expect(!sameGlyph.isUsable,
+               "two input sources for one layout have nothing to correct between")
+        // Two Latin layouts differ on a handful of keys and agree on the rest.
+        // The shared letters have to ride through or nothing ever corrects.
+        let qwertz = LayoutSwitcherSupport.table(from: [0: "y", 1: "z", 2: "k", 3: "e"],
+                                                 to: [0: "z", 1: "y", 2: "k", 3: "e"])
+        expect(qwertz.isUsable, "a pair differing on two keys is still a pair")
+        expectEqual(qwertz.mapForward("keyz") ?? "", "kezy",
+                    "letters both layouts agree on survive the correction")
+        expect(qwertz.mapForward("keyz").flatMap(qwertz.mapReverse) == "keyz",
+               "a correction over shared letters still round trips")
+        expect(qwertz.mapForward("keke") == nil,
+               "a word that would come out unchanged is not offered as a correction")
+        expect(LayoutSwitcherSupport.singleCharacter("\u{9}") == nil
+                && LayoutSwitcherSupport.singleCharacter(" ") == nil
+                && LayoutSwitcherSupport.singleCharacter("ab") == nil
+                && LayoutSwitcherSupport.singleCharacter("q") == "q",
+               "only a single visible character is worth pairing")
+        expect(LayoutSwitcherSupport.trailingWord(in: "one two thr") == "thr"
+                && LayoutSwitcherSupport.trailingWord(in: "solo") == "solo"
+                && LayoutSwitcherSupport.trailingWord(in: "done ").isEmpty,
+               "the word at the caret ends at the last space")
+        let shortest = Defaults.defaultLayoutSwitcherWordLength
+        expect(!LayoutSwitcherSupport.isCorrectable("hi", minimumLength: shortest),
+               "automatic correction leaves a word shorter than the floor alone")
+        for structured in ["https://example.com", "user@example.com", "src/main.swift",
+                           "camelCase", "snake_case", "file.txt"] {
+            expect(LayoutSwitcherSupport.looksStructured(structured),
+                   "\(structured) reads as something meant for a machine")
+        }
+        expect(!LayoutSwitcherSupport.looksStructured("Hello")
+                && !LayoutSwitcherSupport.looksStructured("word"),
+               "an ordinary word is not mistaken for an identifier")
+        expect(Defaults.sanitizedLayoutSwitcherWordLength(0) == Defaults.defaultLayoutSwitcherWordLength
+                && Defaults.sanitizedLayoutSwitcherWordLength(99) == Defaults.defaultLayoutSwitcherWordLength,
+               "layout switcher keeps only its settings range")
+
         // MARK: Mouse click debounce
 
         let clickConfig = MouseClickDebounceConfig(enabled: true, windowMilliseconds: 25)
@@ -1180,6 +1301,27 @@ struct MetricsTests {
         expect(clickDebounceServiceCode.contains(
             "recoveryGeneration == self.lifecycleGeneration"
         ), "click debounce drops disabled-tap recovery after a newer lifecycle change")
+        let layoutSwitcherSource = (try? String(
+            contentsOfFile: "Sources/Vorssaint/Services/LayoutSwitcher/LayoutSwitcherService.swift",
+            encoding: .utf8)) ?? ""
+        let layoutSwitcherCode = layoutSwitcherSource.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        expect(layoutSwitcherCode.contains("IsSecureEventInputEnabled")
+                && layoutSwitcherCode.contains("TextSnippetService.syntheticMarker")
+                && layoutSwitcherCode.contains("SessionActivity.shared.onChange"),
+               "layout switcher skips password fields, its own typing, and follows the session")
+        // Every word the user types passes through this service. Nothing may
+        // carry one out of the process.
+        expect(!layoutSwitcherCode.contains("NSLog")
+                && !layoutSwitcherCode.contains("print(")
+                && !layoutSwitcherCode.contains("/tmp"),
+               "layout switcher writes no typed text to a log or a file")
+        expect(layoutSwitcherCode.contains("TextSnippetService.postExpansion"),
+               "layout switcher types back through the one shared typing routine")
+        expect(!layoutSwitcherCode.contains("usleep") && !layoutSwitcherCode.contains("as!"),
+               "layout switcher neither sleeps on its caller nor force-casts an Accessibility value")
+
         expect(!clickDebounceServiceCode.contains("Timer(")
                 && !clickDebounceServiceCode.contains("asyncAfter"),
                "legacy click filtering adds no timer or delayed release to healthy clicks")
@@ -3734,8 +3876,6 @@ struct MetricsTests {
                < DockPreviewSupport.openDelay(
                    milliseconds: DockPreviewSupport.openDelayMillisecondsRange.lowerBound),
                "a switch, reading its window list inline, still lands before the shortest fresh open")
-        expect(registeredDefaults[DefaultsKey.autoCheckUpdates] as? Bool == true,
-               "update checks are on for clean installs")
         expect(registeredDefaults[DefaultsKey.updateShowcaseIntroVersion] as? String == "",
                "update showcase intro starts unseen")
         expect(registeredDefaults[DefaultsKey.updateShowcaseMediaOverride] as? String == "",
@@ -3871,6 +4011,23 @@ struct MetricsTests {
                "keyboard debounce default window starts low")
         expect(registeredDefaults[DefaultsKey.keyboardDebounceKeyWindows] as? String == "",
                "keyboard debounce per-key windows start empty")
+        expect(registeredDefaults[DefaultsKey.layoutSwitcherEnabled] as? Bool == false,
+               "layout switcher is opt-in")
+        expect(registeredDefaults[DefaultsKey.layoutSwitcherAutomatic] as? Bool == false,
+               "layout switcher corrects only when asked until told otherwise")
+        expect(registeredDefaults[DefaultsKey.layoutSwitcherMinimumWordLength] as? Int
+                == Defaults.defaultLayoutSwitcherWordLength,
+               "layout switcher starts at its own default word length")
+        expect(registeredDefaults[DefaultsKey.panelControlLayoutSwitcher] as? Bool == true,
+               "layout switcher is visible in the panel when installed")
+        expect(registeredDefaults[DefaultsKey.transcriberLocation] as? String
+                == TranscriptionLocation.local.rawValue,
+               "the transcriber decodes on this Mac until told otherwise")
+        expect(registeredDefaults[DefaultsKey.transcriberRemoteHost] as? String == ""
+                && registeredDefaults[DefaultsKey.transcriberOutputFolder] as? String == "",
+               "the transcriber starts with no server and no folder override")
+        expect(registeredDefaults[DefaultsKey.transcriberKeepAudio] as? Bool == false,
+               "the transcriber cleans up the audio it extracted")
         expect(registeredDefaults[DefaultsKey.panelUtilityCleaning] as? Bool == true,
                "panel cleaning utility is visible by default")
         expect(registeredDefaults[DefaultsKey.cleaningModeKeepScreenVisible] as? Bool == false,
@@ -9447,7 +9604,7 @@ struct MetricsTests {
         ) == "Pasted_Image_19700101_000000.png",
                "pasted images receive the stable timestamped PNG name")
 
-        // MARK: Update installer helpers
+        // MARK: Shortcut roles
 
         expect(GlobalShortcutRole.activeRoles(isOn: { _ in false }).isEmpty,
                "no enabled gates means no active shortcuts")
@@ -9614,50 +9771,6 @@ struct MetricsTests {
             liveEntries: [LiveSystemShortcut(id: 27, shortcut: .switcherWindowDefault, enabled: true)],
             symbolicHotKeys: nil, role: .switcher),
                "the native exception stays scoped to the corresponding switcher action")
-
-        expect(UpdateInstallerSupport.progressStepAdvanced(from: nil, to: 0.004),
-               "the first known download fraction always publishes")
-        expect(!UpdateInstallerSupport.progressStepAdvanced(from: 0.011, to: 0.019),
-               "fractions inside the same percent stay quiet")
-        expect(UpdateInstallerSupport.progressStepAdvanced(from: 0.019, to: 0.021),
-               "crossing into the next percent publishes")
-        expect(!UpdateInstallerSupport.progressStepAdvanced(from: 0.5, to: 0.5),
-               "an unchanged fraction stays quiet")
-
-        let updateCeiling = UpdateInstallerSupport.downloadCeilingBytes
-        expect(UpdateInstallerSupport.downloadByteLimit(expectedBytes: 9_638_011) == 9_638_011,
-               "a download stops at the size the release advertises")
-        expect(UpdateInstallerSupport.downloadByteLimit(expectedBytes: nil) == updateCeiling,
-               "an asset with no size still stops at the ceiling")
-        expect(UpdateInstallerSupport.downloadByteLimit(expectedBytes: 0) == updateCeiling,
-               "a zero size is not a limit of zero")
-        expect(UpdateInstallerSupport.downloadByteLimit(expectedBytes: updateCeiling + 1) == updateCeiling,
-               "an advertised size beyond the ceiling cannot raise it")
-
-        expect(UpdateInstallerSupport.downloadIsUsable(status: 200,
-                                                       receivedBytes: 9_638_011,
-                                                       expectedBytes: 9_638_011),
-               "a complete asset download is handed to the installer")
-        expect(!UpdateInstallerSupport.downloadIsUsable(status: 404,
-                                                        receivedBytes: 1_200,
-                                                        expectedBytes: 9_638_011),
-               "an error page is refused whatever it contains")
-        expect(!UpdateInstallerSupport.downloadIsUsable(status: 200,
-                                                        receivedBytes: 4_000_000,
-                                                        expectedBytes: 9_638_011),
-               "a truncated body is refused")
-        expect(!UpdateInstallerSupport.downloadIsUsable(status: 200,
-                                                        receivedBytes: 0,
-                                                        expectedBytes: nil),
-               "an empty body is refused even with no advertised size")
-        expect(!UpdateInstallerSupport.downloadIsUsable(status: 200,
-                                                        receivedBytes: updateCeiling + 1,
-                                                        expectedBytes: nil),
-               "a body past the ceiling is refused with no advertised size")
-        expect(UpdateInstallerSupport.downloadIsUsable(status: 200,
-                                                       receivedBytes: 9_638_011,
-                                                       expectedBytes: nil),
-               "a plausible body with no advertised size is accepted")
 
         // The showcase loader is a @StateObject, so it can be released without
         // `.onDisappear` running. Its session holds the download delegate, and
@@ -10127,15 +10240,6 @@ struct MetricsTests {
                 && verticalPlacement.frame.maxY == 472,
                "vertical avoidance moves settings below the panel with the standard gap")
 
-        expect(UpdateInstallerSupport.shouldForceAdminInstall(afterFailureCode: "fail-copy"),
-               "a copy failure retries through the admin prompt")
-        expect(UpdateInstallerSupport.shouldForceAdminInstall(afterFailureCode: "fail-swap"),
-               "a swap failure retries through the admin prompt")
-        expect(!UpdateInstallerSupport.shouldForceAdminInstall(afterFailureCode: "fail-verify"),
-               "a verification failure is not a permission problem")
-        expect(!UpdateInstallerSupport.shouldForceAdminInstall(afterFailureCode: nil),
-               "no remembered failure means the normal path")
-
         let adminSource = AdminShell.appleScriptSource(
             command: #"printf "quoted" \ path"#,
             prompt: #"Approve "update" \ now"#)
@@ -10178,107 +10282,6 @@ struct MetricsTests {
         expect(!MediaSupport.outputGrew(originalBytes: 0, outputBytes: 12_000),
                "an unknown original size never triggers the grew caption")
 
-        expect(UpdateInstallerSupport.shellSingleQuoted("/Applications/My App.app")
-                   == "'/Applications/My App.app'",
-               "shell quoting wraps paths with spaces")
-        expect(UpdateInstallerSupport.shellSingleQuoted("it's") == "'it'\\''s'",
-               "shell quoting survives embedded single quotes")
-        expect(UpdateInstallerSupport.installFailureCode(fromMarker: "ok\n") == nil,
-               "an ok marker is not a failure")
-        expect(UpdateInstallerSupport.installFailureCode(fromMarker: " fail-verify\n") == "fail-verify",
-               "a fail marker surfaces its step code")
-        expect(UpdateInstallerSupport.installFailureCode(fromMarker: "") == nil,
-               "an empty marker is not a failure")
-        expect(UpdateInstallerSupport.runsFromImmutableLocation(
-                   appPath: "/private/var/folders/ab/xyz/T/AppTranslocation/1F2/d/Vorssaint.app",
-                   volumeIsReadOnly: { _ in false }),
-               "translocated apps are flagged as not updatable in place")
-        expect(UpdateInstallerSupport.runsFromImmutableLocation(appPath: "/Volumes/Vorssaint/Vorssaint.app",
-                                                                volumeIsReadOnly: { _ in true }),
-               "apps on a read-only volume (the DMG) are flagged as not updatable in place")
-        expect(!UpdateInstallerSupport.runsFromImmutableLocation(appPath: "/Volumes/ExternalSSD/Vorssaint.app",
-                                                                 volumeIsReadOnly: { _ in false }),
-               "apps on a writable external volume stay updatable in place")
-        let installerScript = UpdateInstallerSupport.installerScript()
-        for step in ["fail-dmg-verify", "fail-tempdir", "fail-mount", "fail-no-app-in-dmg",
-                     "fail-copy", "fail-version", "fail-verify", "fail-swap", "note ok"] {
-            expect(installerScript.contains(step),
-                   "installer script reports the \(step) step")
-        }
-        expect(installerScript.contains("spctl --status"),
-               "installer script skips Gatekeeper assessment when the user disabled it")
-        let dmgVerification = installerScript.range(of: "DMG_VERIFY_REQ")
-        let dmgMount = installerScript.range(of: "/usr/bin/hdiutil attach")
-        expect(dmgVerification != nil && dmgMount != nil
-               && dmgVerification!.lowerBound < dmgMount!.lowerBound,
-               "installer verifies the release signer before mounting the DMG")
-        expect(installerScript.contains("BUNDLE_VERSION=")
-               && installerScript.contains("\"$BUNDLE_VERSION\" = \"$EXPECTED_VERSION\""),
-               "installer requires the signed app to match the offered release version")
-        expect(installerScript.contains("chown -R"),
-               "an elevated install hands the bundle back to the user")
-        expect(installerScript.contains("update-old.$PID"),
-               "the swap backup name is unique per run so a stale root-owned one never blocks it")
-        expect(installerScript.contains("launchctl asuser"),
-               "installer script relaunches as the user when running as root")
-        expect(installerScript.contains("$RESULT.progress") && installerScript.contains("finalize"),
-               "installer markers stay in a progress file until the run finishes")
-        expect(installerScript.contains("/usr/bin/sudo -n -u \"#$ASUSER\" /bin/sh -c")
-                && installerScript.contains("'/bin/echo \"$1\" > \"$2.progress\"' marker \"$1\" \"$RESULT\"")
-                && installerScript.contains("/usr/bin/sudo -n -u \"#$ASUSER\" /bin/mv -f")
-                && !installerScript.contains("note() { /bin/echo \"$1\" > \"$RESULT.progress\""),
-               "elevated marker writes drop to the original user's credentials")
-        let elevated = UpdateInstallerSupport.elevatedInstallCommand(
-            appPath: "/Applications/Vorssaint.app",
-            dmgPath: "/tmp/Vorssaint-update.dmg",
-            pid: 123,
-            resultPath: "/tmp/result",
-            uid: 501,
-            expectedVersion: "3.3.3")
-        expect(elevated.contains("POSIX::setsid()") && elevated.hasSuffix("&"),
-               "elevated installer leaves this app's session so it outlives the app it replaces")
-        expect(elevated.contains("nohup"),
-               "elevated installer keeps the nohup fallback if setsid is unavailable")
-        expect(elevated.contains("'/Applications/Vorssaint.app'"),
-               "elevated installer passes the app path quoted for the shell")
-        expect(elevated.contains("'3.3.3'"),
-               "elevated installer passes the expected version quoted for the shell")
-        // The script travels inline and is long; it must be spelled once, with
-        // both the setsid attempt and the fallback reusing the same "$@".
-        expect(elevated.components(separatedBy: "DMG_VERIFY_REQ=").count == 2
-               && elevated.components(separatedBy: "\"$@\"").count == 3,
-               "elevated installer names its arguments once and reuses them for the fallback")
-
-        // The fallback branch has to be chosen on whether perl is there, never
-        // on an exit code: perl execs the payload, so the status the shell sees
-        // is the payload's own. Every `exit 1` inside the installer script would
-        // otherwise start the whole installer a second time, as root.
-        let detachRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("VorssaintDetachTests-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: detachRoot, withIntermediateDirectories: true)
-        let detachPayload = detachRoot.appendingPathComponent("payload.sh")
-        let detachLedger = detachRoot.appendingPathComponent("runs")
-        try? "#!/bin/sh\n/bin/echo ran >> \"$1\"\nexit 1\n"
-            .write(to: detachPayload, atomically: true, encoding: .utf8)
-        let detachCommand = DetachedProcess.detachedShellCommand(
-            quotedArgv: ["/bin/sh", detachPayload.path, detachLedger.path]
-                .map(UpdateInstallerSupport.shellSingleQuoted)
-                .joined(separator: " "))
-        let detachShell = Process()
-        detachShell.executableURL = URL(fileURLWithPath: "/bin/sh")
-        detachShell.arguments = ["-c", detachCommand]
-        try? detachShell.run()
-        detachShell.waitUntilExit()
-        func detachedRunCount() -> Int {
-            (try? String(contentsOf: detachLedger, encoding: .utf8))?
-                .split(separator: "\n").count ?? 0
-        }
-        for _ in 0..<300 where detachedRunCount() == 0 { usleep(10_000) }
-        expect(detachedRunCount() == 1, "a detached command starts its payload once")
-        // The rerun is counted again at the very end of this suite instead of
-        // after a fixed wait here: a second run arriving late must not read as
-        // a pass.
-
         // A detached spawn is only detached if the child really is its own
         // session leader; `nohup` alone leaves it in ours.
         do {
@@ -10300,6 +10303,9 @@ struct MetricsTests {
         // close. `Process` gave its children a clean table; these children get
         // the same. 0/1/2 must still be open (on /dev/null), or the child's
         // first open() takes stdout's slot.
+        func shellQuoted(_ value: String) -> String {
+            "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
         let fdRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("VorssaintDetachFDTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: fdRoot, withIntermediateDirectories: true)
@@ -10312,7 +10318,7 @@ struct MetricsTests {
         do {
             let probe = "{ /bin/echo leaked >&\(holderDescriptor); } 2>/dev/null; INHERITED=$?; "
                 + "{ /bin/echo stdio; } 2>/dev/null; STDIO=$?; "
-                + "/bin/echo \"$INHERITED $STDIO\" > \(UpdateInstallerSupport.shellSingleQuoted(fdReport.path))"
+                + "/bin/echo \"$INHERITED $STDIO\" > \(shellQuoted(fdReport.path))"
             let child = try DetachedProcess.spawn("/bin/sh", ["-c", probe])
             var reaped: Int32 = 0
             waitpid(child, &reaped, 0)
@@ -10331,102 +10337,31 @@ struct MetricsTests {
         close(holderDescriptor)
         try? FileManager.default.removeItem(at: fdRoot)
 
-        // MARK: - UpdateServiceSupport & SemVer channel reconciliation
-
-        let vStable = UpdateServiceSupport.SemanticVersion(raw: "3.3.3")
-        expect(vStable?.major == 3 && vStable?.minor == 3 && vStable?.patch == 3 && !vStable!.isPrerelease,
-               "parses standard stable version")
-
-        let vBeta = UpdateServiceSupport.SemanticVersion(raw: "v3.3.4-beta.1")
-        expect(vBeta?.major == 3 && vBeta?.minor == 3 && vBeta?.patch == 4 && vBeta!.isPrerelease,
-               "parses beta version with leading v")
-
-        let vBuild = UpdateServiceSupport.SemanticVersion(raw: "3.3.4-rc.2+20260822")
-        expect(vBuild?.major == 3 && vBuild?.minor == 3 && vBuild?.patch == 4 && vBuild!.isPrerelease,
-               "parses version with build metadata")
-
-        // SemVer 2.0.0 ordering rules
-        expect(UpdateServiceSupport.isNewer("3.3.4", than: "3.3.3"),
-               "newer major/minor/patch stable is newer")
-        expect(!UpdateServiceSupport.isNewer("3.3.3", than: "3.3.4"),
-               "older stable is not newer")
-        expect(UpdateServiceSupport.isNewer("3.3.4-beta.1", than: "3.3.3"),
-               "beta of higher version is newer than older stable")
-        expect(UpdateServiceSupport.isNewer("3.3.4-beta.2", than: "3.3.4-beta.1"),
-               "beta.2 is newer than beta.1 of the same cycle")
-        expect(UpdateServiceSupport.isNewer("3.3.4-rc.1", than: "3.3.4-beta.2"),
-               "rc.1 is newer than beta.2")
-        expect(UpdateServiceSupport.isNewer("3.3.4", than: "3.3.4-beta.2"),
-               "final stable release is newer than beta of same version")
-        expect(UpdateServiceSupport.isNewer("3.3.4", than: "3.3.4-rc.1"),
-               "final stable release is newer than rc of same version")
-        expect(!UpdateServiceSupport.isNewer("3.3.3", than: "3.3.4-beta.1"),
-               "older stable is never newer than a beta of higher version (no downgrade)")
-        expect(!UpdateServiceSupport.isNewer("3.3.4-beta.1", than: "3.3.4"),
-               "beta is not newer than the released final version")
-
-        // Release candidate selection
-        let dummyDMG = URL(string: "https://github.com/vorssaint/vorssaint-utils/releases/download/v3.3.4/Vorssaint.dmg")!
-        let dummyBetaDMG = URL(string: "https://github.com/vorssaint/vorssaint-utils/releases/download/v3.3.4-beta.1/Vorssaint.dmg")!
-
-        let candidateList = [
-            UpdateServiceSupport.ReleaseCandidate(tagName: "v3.3.4-beta.1", isPrerelease: true, isDraft: false, dmgURL: dummyBetaDMG, dmgExpectedBytes: 1000, body: "Beta notes"),
-            UpdateServiceSupport.ReleaseCandidate(tagName: "v3.3.3", isPrerelease: false, isDraft: false, dmgURL: dummyDMG, dmgExpectedBytes: 1000, body: "Stable notes"),
-            UpdateServiceSupport.ReleaseCandidate(tagName: "v3.3.5-beta.1", isPrerelease: true, isDraft: true, dmgURL: dummyBetaDMG, dmgExpectedBytes: 1000, body: "Draft notes")
-        ]
-
-        let selectedStable = UpdateServiceSupport.selectUpdate(from: candidateList, currentVersion: "3.3.2", includeBetas: false)
-        expect(selectedStable?.tagName == "v3.3.3", "stable channel only picks stable releases")
-
-        let selectedBeta = UpdateServiceSupport.selectUpdate(from: candidateList, currentVersion: "3.3.2", includeBetas: true)
-        expect(selectedBeta?.tagName == "v3.3.4-beta.1", "beta channel picks highest non-draft release")
-
-        let selectedFromHigherBeta = UpdateServiceSupport.selectUpdate(from: candidateList, currentVersion: "3.3.4-beta.1", includeBetas: false)
-        expect(selectedFromHigherBeta == nil, "user on beta turning off betas does not downgrade to older stable")
-
+        // MARK: What's New showcase media checksum
         let knownDigest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        expect(UpdateServiceSupport.sha256Matches(Data("abc".utf8), expectedHex: knownDigest),
+        expect(UpdateShowcaseInfo.sha256Matches(Data("abc".utf8), expectedHex: knownDigest),
                "update media accepts its pinned SHA-256 digest")
-        expect(!UpdateServiceSupport.sha256Matches(Data("altered".utf8), expectedHex: knownDigest),
+        expect(!UpdateShowcaseInfo.sha256Matches(Data("altered".utf8), expectedHex: knownDigest),
                "update media rejects content that does not match its pinned digest")
-        expect(!UpdateServiceSupport.sha256Matches(Data("abc".utf8), expectedHex: "invalid"),
+        expect(!UpdateShowcaseInfo.sha256Matches(Data("abc".utf8), expectedHex: "invalid"),
                "update media rejects a malformed pinned digest")
-
-        // Defaults registered
-        expect(Defaults.registeredDefaults[DefaultsKey.includeBetaUpdates] as? Bool == false,
-               "includeBetaUpdates defaults to false in registeredDefaults")
-
-        let testDefaults = UserDefaults(suiteName: "com.vorssaint.tests.betaActivation")!
-        testDefaults.removePersistentDomain(forName: "com.vorssaint.tests.betaActivation")
-        Defaults.activateBetaChannelIfRunningBeta(in: testDefaults, version: "3.3.3-beta.1")
-        expect(testDefaults.bool(forKey: DefaultsKey.includeBetaUpdates) == true,
-               "beta channel is activated automatically on a beta build")
-        testDefaults.set(false, forKey: DefaultsKey.includeBetaUpdates)
-        Defaults.activateBetaChannelIfRunningBeta(in: testDefaults, version: "3.3.3-beta.1")
-        expect(testDefaults.bool(forKey: DefaultsKey.includeBetaUpdates) == false,
-               "manual opt-out on a beta build is preserved across launches")
-
-        // Stable version does not activate beta channel
-        let stableDefaults = UserDefaults(suiteName: "com.vorssaint.tests.stableActivation")!
-        stableDefaults.removePersistentDomain(forName: "com.vorssaint.tests.stableActivation")
-        Defaults.activateBetaChannelIfRunningBeta(in: stableDefaults, version: "3.3.3")
-        expect(stableDefaults.object(forKey: DefaultsKey.includeBetaUpdates) == nil,
-               "stable release does not touch beta channel default")
-        stableDefaults.removePersistentDomain(forName: "com.vorssaint.tests.stableActivation")
-        testDefaults.removePersistentDomain(forName: "com.vorssaint.tests.betaActivation")
-
-        // Localization completeness & formatting
         for language in AppLanguage.allCases {
             L10n.shared.language = language
-            let s = L10n.shared.s
-            expect(!s.includeBetaUpdatesToggle.isEmpty, "\(language.rawValue) includeBetaUpdatesToggle non-empty")
-            expect(!s.includeBetaUpdatesCaption.isEmpty, "\(language.rawValue) includeBetaUpdatesCaption non-empty")
-            expect(!s.betaBadgeLabel.isEmpty, "\(language.rawValue) betaBadgeLabel non-empty")
-            expect(!s.includeBetaUpdatesCaption.contains("—"), "\(language.rawValue) has no em dash")
+            expect(!L10n.shared.s.betaBadgeLabel.isEmpty, "\(language.rawValue) betaBadgeLabel non-empty")
         }
         L10n.shared.language = .enUS
 
         // MARK: Launch at login reconciliation
+        expect(LaunchAtLoginSupport.runsFromImmutableLocation(
+                   appPath: "/private/var/folders/ab/xyz/T/AppTranslocation/1F2/d/Vorssaint.app",
+                   volumeIsReadOnly: { _ in false }),
+               "a translocated app is not a stable place to launch at login from")
+        expect(LaunchAtLoginSupport.runsFromImmutableLocation(appPath: "/Volumes/Vorssaint/Vorssaint.app",
+                                                              volumeIsReadOnly: { _ in true }),
+               "an app on a read-only volume such as the disk image is not a stable place to launch from")
+        expect(!LaunchAtLoginSupport.runsFromImmutableLocation(appPath: "/Volumes/ExternalSSD/Vorssaint.app",
+                                                               volumeIsReadOnly: { _ in false }),
+               "an app on a writable external volume is a stable place to launch at login from")
 
         expect(LaunchAtLoginSupport.startupAction(wanted: true, registration: .off,
                                                   locationIsUnstable: false) == .register,
@@ -13148,19 +13083,6 @@ struct MetricsTests {
                "release notes preserve an unheaded release-body summary paragraph")
         expect(previewNotes.sections.first?.paragraphItems.first == "A short release summary from the GitHub release body.",
                "release notes keep summary text before the first subsection")
-        let githubReleaseBodyWithFooter = """
-        ### Fixed
-        - Update preview stays focused on changes.
-
-        Signed with an Apple Developer ID and notarized by Apple, so it downloads and opens normally. Requires macOS 14 or later. Open the .dmg below and drag Vorssaint to Applications.
-        """
-        let inAppUpdateBody = ReleaseNotes.inAppUpdateNotes(from: githubReleaseBodyWithFooter) ?? ""
-        expect(!inAppUpdateBody.contains("Signed with an Apple Developer ID"),
-               "in-app update notes remove the GitHub installation footer")
-        let githubPreviewNotes = ReleaseNotes.notes(for: "2.17.4",
-                                                    changelog: "## [2.17.4]\n\n" + inAppUpdateBody)
-        expect(githubPreviewNotes.sections.first?.bulletItems == ["Update preview stays focused on changes."],
-               "in-app update notes keep release changes after removing the footer")
         let unreleasedChangelog = """
         ## [Unreleased]
 
@@ -14143,6 +14065,12 @@ struct MetricsTests {
                    !(infoPlist?[$0] as? String ?? "").isEmpty
                },
                "the organizer declares every supported custom destination permission")
+        // The transcriber writes into these same folders, so a prompt that
+        // speaks only of WhatsApp would explain the wrong feature.
+        expect((["NSDownloadsFolderUsageDescription"] + organizerFolderPromptKeys).allSatisfy {
+                   (infoPlist?[$0] as? String ?? "").localizedCaseInsensitiveContains("transcri")
+               },
+               "every folder access prompt explains the transcriber as well as the organizer")
         let localizedInfoPlists = (try? FileManager.default.contentsOfDirectory(
             atPath: "Resources"))?.filter { $0.hasSuffix(".lproj") } ?? []
         expect(localizedInfoPlists.allSatisfy { folder in
@@ -14957,13 +14885,14 @@ struct MetricsTests {
 
         // MARK: Features hub catalog
 
-        expect(AppFeature.allCases.count == 66, "feature catalog has 66 features")
+        expect(AppFeature.allCases.count == 68, "feature catalog has 68 features")
         expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         expect(AppFeature.allCases.map(\.rawValue) == [
             "switcher", "dockPreview", "dockClick", "windowMaximizer", "windowLayout", "autoQuit",
             "scrollInverter", "focusFollowsMouse", "smoothScroll", "mouseAcceleration", "mouseNavigation", "mouseButtonShortcuts", "middleClick",
-            "mouseClickDebounce", "keyboardDebounce", "textSnippets", "superKey", "quitWindowProtection",
+            "mouseClickDebounce", "keyboardDebounce", "textSnippets", "layoutSwitcher", "superKey",
+            "quitWindowProtection",
             "clipboardHistory", "pastePlain", "finderCutPaste", "finderRename", "shelf", "urlCleaner",
             "diskImageInstaller",
             "mixer", "soundOutputSwitcher", "micMute", "musicBlock",
@@ -14971,6 +14900,7 @@ struct MetricsTests {
             "quickLauncher", "quickToggles", "colorPicker", "screenOCR", "cleaningMode", "mediaTools",
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
             "radialMenu", "scratchpad", "commandBar", "screenRecorder", "killProcess", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchDownloads",
+            "youtubeTranscriber",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
             "fanControl",
         ], "feature ids are stable (they persist inside availability keys)")
@@ -15095,9 +15025,12 @@ struct MetricsTests {
                 && (AppFeature.availabilityDefaults[AppFeature.diskImageInstaller.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.focusFollowsMouse.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.killProcess.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.layoutSwitcher.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.youtubeTranscriber.availabilityKey] as? Bool) == false
                 && AppFeature.allCases.filter {
                     $0 != .focusFollowsMouse && $0 != .fanControl && $0 != .diskImageInstaller
-                        && $0 != .killProcess
+                        && $0 != .killProcess && $0 != .layoutSwitcher
+                        && $0 != .youtubeTranscriber
                 }.allSatisfy {
                     (AppFeature.availabilityDefaults[$0.availabilityKey] as? Bool) == true
                 },
@@ -15122,8 +15055,10 @@ struct MetricsTests {
             of: additionalPermissionsAlignment,
             options: .regularExpression) != nil,
                "the additional onboarding permission rows share one leading edge")
-        expect(FeaturePreset.essential.features.flatMap(\.onboardingPermissions).isEmpty,
-               "the essential first-run choice asks for no broad permission")
+        expect(Set(FeaturePreset.essential.features.flatMap(\.onboardingPermissions)) == [.accessibility]
+                && FeaturePreset.essential.features.filter { !$0.onboardingPermissions.isEmpty }
+                    == [.layoutSwitcher],
+               "the essential first-run choice asks only for Accessibility, and only for the layout switcher")
         expect(Set(FeaturePreset.windows.features.flatMap(\.onboardingPermissions))
                 == [.accessibility, .screenRecording],
                "the windows first-run choice explains exactly its two broad permissions")
@@ -15659,6 +15594,28 @@ struct MetricsTests {
                 && AppFeature.mouseClickDebounce.permissions == [.accessibility]
                 && AppFeature.mouseClickDebounce.group == .mouseKeyboard,
                "mouse click debounce reports its switch, permission and feature group")
+        expect(activeSet(.accessibility, on: [DefaultsKey.layoutSwitcherEnabled])
+                .contains(.layoutSwitcher)
+                && AppFeature.layoutSwitcher.enabledKeys == [DefaultsKey.layoutSwitcherEnabled]
+                && AppFeature.layoutSwitcher.permissions == [.accessibility]
+                && AppFeature.layoutSwitcher.group == .mouseKeyboard
+                && AppFeature.layoutSwitcher.energyProfile == .keyboard,
+               "layout switcher reports its switch, permission, group and energy profile")
+        expect(AppFeature.youtubeTranscriber.permissions == [.filesAndFolders]
+                && AppFeature.youtubeTranscriber.enabledKeys.isEmpty
+                && AppFeature.youtubeTranscriber.group == .tools
+                && AppFeature.youtubeTranscriber.energyProfile == .idle,
+               "the transcriber asks only for folder access and costs nothing at rest")
+        // The first-run permissions step explains Accessibility and Screen
+        // Recording for the features picked there. macOS asks for folder
+        // access at the first write, so the transcriber is never on that step.
+        expect(AppFeature.youtubeTranscriber.onboardingPermissions.isEmpty
+                && !AppFeature.youtubeTranscriber.monitorsPermissionChanges(boolFor: { _ in true }),
+               "the transcriber asks for folder access when it runs, not at first launch")
+        expect(AppFeature.layoutSwitcher.onboardingPermissions == [.accessibility],
+               "a picked layout switcher is explained under Accessibility at first launch")
+        expect(!AppFeature.availabilityDefaults[AppFeature.layoutSwitcher.availabilityKey].flatMap { $0 as? Bool }!,
+               "layout switcher ships uninstalled, like every new opt-in feature")
         expect(activeSet(.accessibility, on: [DefaultsKey.finderRenameEnabled]).contains(.finderRename),
                "the enabled Finder rename shortcut uses accessibility")
         expect(!activeSet(.accessibility, available: [], on: [DefaultsKey.scrollInverterEnabled])
@@ -15734,10 +15691,11 @@ struct MetricsTests {
                               DefaultsKey.whatsAppOrganizerEnabled,
                               DefaultsKey.whatsAppDownloadsNotify]) == [.cleaner],
                "the experimental WhatsApp organizer can offer an undo notification")
-        expect(activeSet(.filesAndFolders) == [],
+        expect(activeSet(.filesAndFolders) == [.youtubeTranscriber],
                "WhatsApp Downloads folder access stays unused until that cleaner is turned on")
-        expect(activeSet(.filesAndFolders, on: [DefaultsKey.whatsAppDownloadsEnabled]) == [.cleaner],
-               "the cleaner owns WhatsApp Downloads folder access")
+        expect(activeSet(.filesAndFolders, on: [DefaultsKey.whatsAppDownloadsEnabled])
+                == [.cleaner, .youtubeTranscriber],
+               "the cleaner joins the on-demand transcriber on folder access")
 
         expect(activeSet(.fullDiskAccess) == [.cleaner, .uninstaller],
                "cleaner and uninstaller are on-demand full disk users")
@@ -15960,6 +15918,32 @@ struct MetricsTests {
                "Kill Process reports no descendants for a leaf and never follows a self-parenting row")
 
         for language in AppLanguage.allCases {
+            let transcriberValues = Mirror(reflecting: FeatureStrings.youtubeTranscriber(language))
+                .children.compactMap { $0.value as? String }
+            expect(transcriberValues.count == 50
+                    && transcriberValues.allSatisfy { !$0.isEmpty },
+                   "every transcriber string is set for \(language.rawValue)")
+            expect(transcriberValues.allSatisfy { !$0.contains("\u{2014}") },
+                   "no em-dash in visible transcriber strings (\(language.rawValue))")
+            let transcriberText = FeatureStrings.youtubeTranscriber(language)
+            let failures: [TranscriptionFailure] = [
+                .helperMissing(.ytDlp), .helperStale, .videoUnavailable, .videoPrivate,
+                .videoMembersOnly, .videoAgeRestricted, .videoGeoBlocked, .liveNotFinished,
+                .networkUnreachable, .notMedia, .diskFull, .remoteUnreachable,
+                .remoteRejected(status: 500), .cancelled,
+                .helperFailed(.whisperCli, exitCode: 2), .unknown,
+            ]
+            let messages = failures.map { transcriberText.message(for: $0) }
+            expect(Set(messages).count == failures.count
+                    && messages.allSatisfy { !$0.isEmpty && !$0.contains("%") },
+                   "every reason a run stopped reads differently and fills in (\(language.rawValue))")
+            let layoutSwitcherValues = Mirror(reflecting: FeatureStrings.layoutSwitcher(language))
+                .children.compactMap { $0.value as? String }
+            expect(layoutSwitcherValues.count == 11
+                    && layoutSwitcherValues.allSatisfy { !$0.isEmpty },
+                   "every layout switcher string is set for \(language.rawValue)")
+            expect(layoutSwitcherValues.allSatisfy { !$0.contains("\u{2014}") },
+                   "no em-dash in visible layout switcher strings (\(language.rawValue))")
             let superKeyValues = Mirror(reflecting: FeatureStrings.superKey(language)).children
                 .compactMap { $0.value as? String }
             let refusals = SuperKeyMappingFailure.allCases.map {
@@ -16047,6 +16031,10 @@ struct MetricsTests {
                 && FeaturePreset.essential.features.contains(.keepAwake)
                 && FeaturePreset.essential.features.contains(.monitorPower),
                "the essential preset covers mixer, monitor and keep awake")
+        expect(FeaturePreset.essential.features.isSuperset(of: [.layoutSwitcher, .youtubeTranscriber])
+                && FeaturePreset.essential.enableKeys == [DefaultsKey.layoutSwitcherEnabled],
+               "the essential preset installs both new tools and switches on the layout switcher, "
+               + "leaving automatic correction off")
         expect(FeaturePreset.windows.features.allSatisfy { $0.group == .windowsDock },
                "the windows preset stays inside the windows and Dock group")
         expect(FeaturePreset.battery.features.allSatisfy {
@@ -25961,7 +25949,7 @@ struct MetricsTests {
         let buildScriptCode = buildScript.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
         expect(buildScriptCode.contains { $0.contains("(( DEV || INSTALL ))")
-                                            && $0.contains("developer_id_identity") },
+                                            && $0.contains("release_identity") },
                "the signing setup guard covers every install, not only the Developer variant")
         // The setup script must run against the stock /usr/bin/openssl, which
         // is LibreSSL: it rejects OpenSSL 3's -legacy flag outright, and the
@@ -26230,16 +26218,6 @@ struct MetricsTests {
                "in-app uninstall aborts unless fans and normal sleep are restored before removal")
         expect(uninstallScriptSource.contains("SleepDisabled"),
                "script uninstall reads the sleep setting back for itself")
-
-        // MARK: Detached command reruns (counted last, so a late rerun still fails)
-        // The `||` form reran the whole installer — as root — on every non-zero
-        // payload exit. Counting here rather than after a fixed wait leaves the
-        // check no window a second run can arrive behind.
-        let detachedRuns = detachedRunCount()
-        expect(detachedRuns == 1,
-               "a detached command runs its payload once whatever the payload exits with "
-               + "(ran \(detachedRuns) time(s))")
-        try? FileManager.default.removeItem(at: detachRoot)
 
         // MARK: Command-Q / Command-W protection
         expect(QuitProtectionSupport.sanitizedHoldDuration(100) == 250,

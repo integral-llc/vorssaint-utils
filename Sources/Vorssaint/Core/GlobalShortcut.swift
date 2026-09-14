@@ -229,6 +229,11 @@ struct GlobalShortcut: Equatable, Hashable {
     static let screenRecorderDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_5),
                                                       modifiers: [.control, .option, .command])
 
+    // R for retype, on the free control-option-command layer. L would have
+    // read better and is taken by the snippet library; Q is next to Quit.
+    static let layoutSwitcherDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_R),
+                                                      modifiers: [.control, .option, .command])
+
     static func saved(for key: String, fallback: GlobalShortcut) -> GlobalShortcut {
         if let raw = UserDefaults.standard.string(forKey: key),
            let shortcut = GlobalShortcut(storageValue: raw) {
@@ -646,24 +651,15 @@ struct GlobalShortcut: Equatable, Hashable {
                                               layoutData: Data,
                                               usesCommand: Bool,
                                               usesShift: Bool, capsLockOn: Bool) -> String? {
-        var deadKeyState: UInt32 = 0
-        var chars = [UniChar](repeating: 0, count: 4)
-        var length = 0
-        // UCKeyTranslate wants the modifier state already shifted down out of
-        // the Carbon event's high byte.
-        let modifierState = (usesCommand ? UInt32((cmdKey >> 8) & 0xFF) : 0)
-            | (usesShift ? UInt32((shiftKey >> 8) & 0xFF) : 0)
-            | (capsLockOn ? UInt32((alphaLock >> 8) & 0xFF) : 0)
-        let status = layoutData.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> OSStatus in
-            guard let layout = bytes.bindMemory(to: UCKeyboardLayout.self).baseAddress
-            else { return OSStatus(paramErr) }
-            return UCKeyTranslate(layout, code, UInt16(kUCKeyActionDisplay), modifierState,
-                                  UInt32(LMGetKbdType()), OptionBits(kUCKeyTranslateNoDeadKeysBit),
-                                  &deadKeyState, chars.count, &length, &chars)
-        }
-        guard status == noErr, length > 0 else { return nil }
-        let label = String(utf16CodeUnits: chars, count: length)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let translated = KeyboardLayoutGlyph.character(
+            in: layoutData,
+            keyCode: code,
+            action: kUCKeyActionDisplay,
+            carbonModifiers: (usesCommand ? cmdKey : 0) | (usesShift ? shiftKey : 0)
+                | (capsLockOn ? alphaLock : 0),
+            maxLength: 4
+        ) else { return nil }
+        let label = translated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard label.count == 1,
               let scalar = label.unicodeScalars.first,
               !CharacterSet.controlCharacters.contains(scalar)
@@ -712,6 +708,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     case displayBrightnessIncrease
     case keyboardBrightnessDecrease
     case keyboardBrightnessIncrease
+    case layoutSwitcher
 
     var id: String { storageKey }
 
@@ -739,6 +736,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .scratchpad: return DefaultsKey.scratchpadShortcut
         case .snippetLibrary: return DefaultsKey.snippetLibraryShortcut
         case .commandBar: return DefaultsKey.commandBarShortcut
+        case .layoutSwitcher: return DefaultsKey.layoutSwitcherShortcut
         case .screenRecorder: return DefaultsKey.recorderShortcut
         case .displayBrightnessDecrease: return DefaultsKey.displayBrightnessDecreaseShortcut
         case .displayBrightnessIncrease: return DefaultsKey.displayBrightnessIncreaseShortcut
@@ -771,6 +769,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .scratchpad: return .scratchpadDefault
         case .snippetLibrary: return .snippetLibraryDefault
         case .commandBar: return .commandBarDefault
+        case .layoutSwitcher: return .layoutSwitcherDefault
         case .screenRecorder: return .screenRecorderDefault
         case .displayBrightnessDecrease: return .displayBrightnessDecreaseDefault
         case .displayBrightnessIncrease: return .displayBrightnessIncreaseDefault
@@ -827,6 +826,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .scratchpad: return FeatureStrings.scratchpad(L10n.shared.language).pageTitle
         case .snippetLibrary: return FeatureStrings.snippets(L10n.shared.language).libraryTitle
         case .commandBar: return FeatureStrings.commandBar(L10n.shared.language).pageTitle
+        case .layoutSwitcher: return FeatureStrings.layoutSwitcher(L10n.shared.language).pageTitle
         case .screenRecorder: return FeatureStrings.recorder(L10n.shared.language).pageTitle
         case .displayBrightnessDecrease:
             return FeatureStrings.brightness(L10n.shared.language).displayBrightnessDecrease
@@ -880,6 +880,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .scratchpad: return [DefaultsKey.scratchpadShortcutEnabled]
         case .snippetLibrary: return [DefaultsKey.snippetLibraryEnabled]
         case .commandBar: return [DefaultsKey.commandBarShortcutEnabled]
+        case .layoutSwitcher: return [DefaultsKey.layoutSwitcherEnabled]
         case .screenRecorder: return [DefaultsKey.recorderShortcutEnabled]
         case .displayBrightnessDecrease, .displayBrightnessIncrease:
             return [DefaultsKey.brightnessControlEnabled, DefaultsKey.displayBrightnessShortcutsEnabled]
@@ -912,6 +913,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .scratchpad: return .scratchpad
         case .snippetLibrary: return .textSnippets
         case .commandBar: return .commandBar
+        case .layoutSwitcher: return .layoutSwitcher
         case .screenRecorder: return .screenRecorder
         case .displayBrightnessDecrease, .displayBrightnessIncrease: return .brightness
         case .keyboardBrightnessDecrease, .keyboardBrightnessIncrease: return .brightness

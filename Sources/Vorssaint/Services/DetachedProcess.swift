@@ -4,14 +4,15 @@
 import Darwin
 import Foundation
 
-/// Starting something that has to outlive this app: the update installer, the
-/// uninstall and rename scripts, and the relaunch helpers — every one of them
-/// waits for this process to go away before it does its work.
+/// Starting something that has to outlive this app: the uninstall and rename
+/// scripts and the relaunch helpers, every one of which waits for this process
+/// to go away before it does its work.
 ///
 /// `nohup` is not enough: it only makes the child ignore SIGHUP. The child
 /// stays in this app's session and launchd job, so whatever tears that job
-/// down takes the installer with it, and the swap never happens (issue #731,
-/// reported under Endpoint Privilege Management). Leaving the session is the
+/// down takes the child with it and its work never happens. Issue #731 found
+/// this in the since-removed update installer, under Endpoint Privilege
+/// Management. Leaving the session is the
 /// property that makes the child survive, and setsid(2) is the only way to
 /// get it.
 enum DetachedProcess {
@@ -50,29 +51,5 @@ enum DetachedProcess {
                           userInfo: [NSLocalizedDescriptionKey: String(cString: strerror(status))])
         }
         return pid
-    }
-
-    /// The same detachment for a command that can only travel as a shell
-    /// string: the elevated installer goes through the system administrator
-    /// prompt, which takes one command, not an argument vector.
-    ///
-    /// macOS ships no setsid(1), so the session is left by the smallest tool
-    /// present on every macOS that can call setsid(2). If it is ever missing,
-    /// the command falls back to the previous nohup form — a child that may
-    /// still be swept away beats an update that cannot start at all.
-    ///
-    /// The branch is taken on whether perl is *there*, never on an exit code:
-    /// perl execs the payload, so the status the shell sees is the payload's
-    /// own, and an `||` fallback would rerun the whole installer — as root —
-    /// every time it exited non-zero. perl therefore carries the setsid(2)
-    /// failure case itself, degrading to nohup's ignored SIGHUP (a signal
-    /// disposition survives exec) instead of handing the decision back.
-    ///
-    /// `quotedArgv` is the program and its arguments, already quoted for sh.
-    static func detachedShellCommand(quotedArgv: String) -> String {
-        let setsid = "/usr/bin/perl -e 'use POSIX (); "
-            + "POSIX::setsid(); $SIG{HUP} = \"IGNORE\"; exec @ARGV; exit 127'"
-        return "set -- \(quotedArgv); { if [ -x /usr/bin/perl ]; then exec \(setsid) \"$@\"; "
-            + "else exec /usr/bin/nohup \"$@\"; fi; } >/dev/null 2>&1 &"
     }
 }

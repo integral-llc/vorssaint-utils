@@ -14,11 +14,10 @@
 "NSCameraUsageDescription" = "Vorssaint muestra tu cámara solo en la ventana de vista previa que abres, para que compruebes cómo te ves antes de una llamada. No se graba nada ni nada sale de tu Mac.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "Vorssaint consulta metadatos locales en Descargas para revisar, organizar o enviar a la Papelera solo los archivos confirmados de WhatsApp que tú elijas.";
-
+"NSDownloadsFolderUsageDescription" = "Vorssaint guarda aquí las transcripciones que inicias y consulta metadatos locales para revisar, organizar o enviar a la Papelera solo los archivos confirmados de WhatsApp que tú elijas.";
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "Vorssaint organiza las descargas confirmadas de WhatsApp en una carpeta de destino que tú eliges expresamente.";
-"NSDocumentsFolderUsageDescription" = "Vorssaint organiza las descargas confirmadas de WhatsApp en una carpeta de destino que tú eliges expresamente.";
-"NSNetworkVolumesUsageDescription" = "Vorssaint organiza las descargas confirmadas de WhatsApp en una carpeta de destino que tú eliges expresamente.";
-"NSRemovableVolumesUsageDescription" = "Vorssaint organiza las descargas confirmadas de WhatsApp en una carpeta de destino que tú eliges expresamente.";
+"NSDesktopFolderUsageDescription" = "Vorssaint usa una carpeta aquí solo cuando tú la eliges: para transcribir un archivo que le das y guardar la transcripción, o para organizar las descargas confirmadas de WhatsApp.";
+"NSDocumentsFolderUsageDescription" = "Vorssaint usa una carpeta aquí solo cuando tú la eliges: para transcribir un archivo que le das y guardar la transcripción, o para organizar las descargas confirmadas de WhatsApp.";
+"NSNetworkVolumesUsageDescription" = "Vorssaint usa una carpeta aquí solo cuando tú la eliges: para transcribir un archivo que le das y guardar la transcripción, o para organizar las descargas confirmadas de WhatsApp.";
+"NSRemovableVolumesUsageDescription" = "Vorssaint usa una carpeta aquí solo cuando tú la eliges: para transcribir un archivo que le das y guardar la transcripción, o para organizar las descargas confirmadas de WhatsApp.";
 "NSCalendarsFullAccessUsageDescription" = "Muestra tus próximas citas en la parte superior de la pantalla. Los eventos del calendario se quedan en este Mac.";

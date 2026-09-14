@@ -146,11 +146,6 @@ final class StatusItemController {
             }
             .store(in: &cancellables)
 
-        UpdateService.shared.$state
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateIconAppearance() }
-            .store(in: &cancellables)
-
         MicMuteService.shared.$isMuted
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateIconAppearance() }
@@ -271,16 +266,10 @@ final class StatusItemController {
     private func updateIconAppearance() {
         guard let button = statusItem?.button else { return }
         let defaults = UserDefaults.standard
-        let updateAvailable: Bool
-        if case .available = UpdateService.shared.state {
-            updateAvailable = true
-        } else {
-            updateAvailable = false
-        }
         let micBadgeActive = renderedMicBadgeActive
         let optionEnabled = defaults.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics)
         let separateMetrics = defaults.bool(forKey: DefaultsKey.menuBarSeparateMetrics)
-        let signal = updateAvailable || micBadgeActive
+        let signal = micBadgeActive
         let hidden = MenuBarSpacingSupport.shouldHideStatusIcon(
             optionEnabled: optionEnabled,
             separateMetrics: separateMetrics,
@@ -301,7 +290,7 @@ final class StatusItemController {
         // refresh() runs on every monitor tick and lands here; re-rendering
         // the same image every 2 seconds would be wasted composition, so the
         // image is only touched when some ingredient actually changed.
-        let stateKey = [String(hidden), String(mainItemHidden), String(updateAvailable),
+        let stateKey = [String(hidden), String(mainItemHidden),
                         String(keepAwakeActive), KeepAwakeIconTint.current.rawValue,
                         KeepAwakeActiveIcon.current.rawValue,
                         String(micBadgeActive)].joined(separator: "|")
@@ -316,12 +305,7 @@ final class StatusItemController {
             button.image = Self.emptyStatusImage
             return
         }
-        let stateImage: NSImage?
-        if updateAvailable {
-            stateImage = BlackHoleGlyph.attentionImage()
-        } else {
-            stateImage = BlackHoleGlyph.image(active: keepAwakeActive)
-        }
+        let stateImage = BlackHoleGlyph.image(active: keepAwakeActive)
         if micBadgeActive {
             button.image = BlackHoleGlyph.micMutedImage(over: stateImage) ?? stateImage
         } else {
@@ -423,19 +407,13 @@ final class StatusItemController {
             // padding on the item's left edge. Same decision inputs as
             // updateIconAppearance, with a sentinel length: the title is
             // known non-empty on this branch.
-            let updateAvailable: Bool
-            if case .available = UpdateService.shared.state {
-                updateAvailable = true
-            } else {
-                updateAvailable = false
-            }
             let micBadgeActive = renderedMicBadgeActive
             let glyphHidden = MenuBarSpacingSupport.shouldHideStatusIcon(
                 optionEnabled: defaults.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics),
                 separateMetrics: separateMetrics,
                 metricsEnabled: !metrics.isEmpty,
                 renderedTitleLength: 1,
-                mustShowForSignal: updateAvailable || micBadgeActive)
+                mustShowForSignal: micBadgeActive)
             let full = NSMutableAttributedString(string: glyphHidden ? "" : " ")
             full.append(title)
             let stacked = full.string.contains("\n")
@@ -776,13 +754,6 @@ enum BlackHoleGlyph {
                       y: CGFloat(high - 1 - maxY) / unit,
                       width: CGFloat(maxX - minX + 1) / unit,
                       height: CGFloat(maxY - minY + 1) / unit)
-    }
-
-    /// A blue, full-strength glyph used to flag an available update. Non-template
-    /// (a real color), drawn by masking blue into the glyph's shape.
-    static func attentionImage() -> NSImage? {
-        guard let base else { return fallback(active: true) }
-        return tintedImage(base, color: .systemBlue) ?? fallback(active: true)
     }
 
     /// The given state image with a red slashed microphone beside it, shown

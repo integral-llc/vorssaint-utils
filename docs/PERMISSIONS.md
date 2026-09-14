@@ -6,7 +6,7 @@ You can review or change every grant in System Settings, under Privacy and Secur
 
 | Permission | Optional | Powers |
 |---|---|---|
-| Accessibility | Yes | Scroll direction, Window Layout, the app and window switcher, Dock Preview, Dock click to minimize, middle click, paste as plain text, Finder cut and paste, quit on close, radial menu key actions, optional notch notification mirroring and keyboard feedback |
+| Accessibility | Yes | Scroll direction, Window Layout, the app and window switcher, Dock Preview, Dock click to minimize, middle click, paste as plain text, Finder cut and paste, quit on close, radial menu key actions, optional notch notification mirroring and keyboard feedback, Layout Switcher |
 | Screen Recording | Yes | Window previews, screenshots, copy text from screen and screen recordings |
 | System Audio Recording | Yes | Per app volume and output routing in the mixer |
 | Microphone | Yes | Your voice in a screen recording, only when you turn it on |
@@ -15,6 +15,7 @@ You can review or change every grant in System Settings, under Privacy and Secur
 | Files and Folders | Yes | Monitoring downloads in a folder you choose |
 | Notifications | Yes | Keep awake, battery, Monitor and update alerts |
 | Full Disk Access | Yes | A deeper uninstaller scan |
+| Files and Folders | Yes | Saving transcripts, and the WhatsApp downloads cleanup and organizer |
 | Administrator (one time) | Yes | Password free closed lid toggling |
 | Automation | Yes | Finder cut and paste, moving leftovers to the Trash, emptying the Trash and Homebrew Terminal handoff |
 | App Management | Yes | Replacing or removing apps installed through the package manager |
@@ -38,6 +39,10 @@ You can review or change every grant in System Settings, under Privacy and Secur
 - **Radial menu**, for wheel actions that press a key combo or a media key
   for you and for the optional side button trigger; opening apps, files and
   links with the keyboard shortcut alone needs nothing.
+- **Layout Switcher**, which reads the word you selected and types its other
+  spelling back. With correction as you type switched on it also watches for
+  finished words, and it never keeps or reads anything typed into a password
+  field.
 
 **If you say no.** These features stay off. Vorssaint sees the moment you grant the permission and brings them to life with no relaunch.
 
@@ -100,7 +105,6 @@ Download monitoring watches only the folder you choose in the system picker. Fol
 - **Keep awake**, with a note when a keep awake timer finishes.
 - **Battery**, with the battery protection alerts.
 - **Monitor**, with optional alerts for the conditions you turn on.
-- **Updates**, with a one time note when a new version shows up, and only while automatic update checks are on.
 - **App updates**, with a note when other apps on the Mac have a newer version, and only while the background check is on.
 
 **If you say no.** These system notifications are not posted. Status remains available inside the app, and alarms from timers you start still work. Mirroring existing system banners uses Accessibility instead of this permission.
@@ -116,6 +120,19 @@ Download monitoring watches only the folder you choose in the system picker. Fol
 **If you say no.** The uninstaller still works and scans the places it can reach. It just might not surface files tucked away in protected folders.
 
 **Optional.** Yes. There is no pop up for Full Disk Access. You add Vorssaint in System Settings, under Privacy and Security, Full Disk Access, and Vorssaint opens that pane for you when the feature calls for it.
+
+## Files and Folders
+
+**Why it comes up.** macOS guards Downloads, Desktop, Documents and external or network drives, and asks the first time an app reads or writes there.
+
+**What uses it.**
+
+- **Transcriber**, which writes the transcript, and the audio if you keep it, to Downloads or the folder you pick, and reads the file you give it.
+- **WhatsApp downloads in Cleaner**, which checks Downloads for confirmed WhatsApp files and, with the organizer on, moves them to the folder you choose.
+
+**If you say no.** Only that feature is held back there. Pick another folder for it, or allow access later in System Settings, under Privacy and Security, Files and Folders.
+
+**Optional.** Yes. macOS asks at the moment a feature first touches one of those folders, never up front, which is why the first run permissions step does not list it.
 
 ## Administrator, one time and optional
 
