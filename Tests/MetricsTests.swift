@@ -19,7 +19,13 @@ struct MetricsTests {
         let suite = TestSuite()
         let groups: [(String, () -> Void)] = [
             ("harness", { TestHarnessTests.run(suite) }),
-            ("core", { coreChecks(suite) }),
+            ("scroll-modifier", { ScrollHorizontalModifierTests.run(suite) }),
+            ("core", {
+                coreChecks(suite)
+                KeepAwakeTimerHandoffTests.run { suite.expect($0, $1) }
+                SoftwareDimmingRouteTests.run { suite.expect($0, $1) }
+            }),
+            ("display-restoration", { DisplayRestorationTests.run(suite) }),
             ("capture", { ScreenshotSelectionRefreshContract.run(suite) }),
             ("keyboard", {
                 assistiveKeyboardChecks { suite.expect($0, $1) }
@@ -33,13 +39,17 @@ struct MetricsTests {
             ("recording", {
                 RecorderSampleTimingTests.run { suite.expect($0, $1) }
                 RecorderWriterTests.run { suite.expect($0, $1) }
+                RecorderExportChipTests.run { suite.expect($0, $1) }
             }),
             ("network", { SpeedTestTests.run { suite.expect($0, $1) } }),
             ("app-updates", { AppUpdatesContract.run(suite) }),
             ("localization", { LocalizationTests.run(suite) }),
             ("cleaner", { CleanerEligibilityTests.run(suite) }),
+            ("uninstaller", { UninstallerFlowTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
-            ("switcher", { SwitcherScrollContract.run(suite) }),
+            ("switcher", { SwitcherScrollContract.run(suite); SwitcherActivationTests.run(suite) }),
+            ("keep-awake", { KeepAwakeCatalogContract.run(suite) }),
+            ("emoji", { CommandBarEmojiContract.run(suite) }),
             ("layout-detection", { LayoutDetectionTests.run(suite) }),
         ]
         var selected = Set<String>()
@@ -67,6 +77,8 @@ struct MetricsTests {
     }
 
     private static func coreChecks(_ suite: TestSuite) {
+        ScreenshotWatermarkTests.run(suite)
+        MixerNativeDragTests.run(suite)
         func expect(_ condition: Bool, _ message: @autoclosure () -> String,
                     file: StaticString = #filePath, line: UInt = #line) {
             suite.expect(condition, message(), file: file, line: line)
@@ -89,6 +101,8 @@ struct MetricsTests {
 
         NotchTests.run { expect($0, $1) }
         NotchVolumeKeyTests.run { expect($0, $1) }
+        MixerOutputAdjustmentContract.run(suite)
+        MixerInputVolumeContract.run(suite)
 
         // MARK: Byte / rate formatting
 
@@ -2332,6 +2346,10 @@ struct MetricsTests {
                "running-apps Keep Awake is opt-in")
         expect(registeredDefaults[DefaultsKey.keepAwakeRunningAppBundleIDs] as? [String] == [],
                "running-apps Keep Awake starts with an empty app list")
+        expect(registeredDefaults[DefaultsKey.keepAwakeAutomationRequireAll] as? Bool == false,
+               "matching every selected automation condition is opt-in")
+        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.keepAwakeAutomationRequireAll),
+               "the automation match mode follows settings backups")
         expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.keepAwakeRunningApps),
                "running-apps Keep Awake preference follows settings backups")
         expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.keepAwakeRunningAppBundleIDs),
@@ -2428,6 +2446,92 @@ struct MetricsTests {
             sessionActive: true,
             automaticSessionActive: false
         ) == .none, "clearing automatic conditions does not end a manual session")
+        // Match mode over the automation conditions (issue #1587).
+        let bothDockConditions = KeepAwakeAutomationSupport.enabledConditions(
+            externalDisplayEnabled: true, powerEnabled: true, runningAppsEnabled: false)
+        expect(bothDockConditions == [.externalDisplay, .power],
+               "enabled conditions are collected whether or not they hold")
+        expect(KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: [.externalDisplay], enabled: bothDockConditions, requireAll: false
+        ), "Any keeps today's behavior: one matching condition is enough")
+        expect(!KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: [.externalDisplay], enabled: bothDockConditions, requireAll: true
+        ), "All refuses a session while one enabled condition is unmet")
+        expect(KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: bothDockConditions, enabled: bothDockConditions, requireAll: true
+        ), "All starts a session once every enabled condition is met")
+        expect(!KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: [], enabled: [], requireAll: true
+        ), "All never treats an empty selection as satisfied")
+        let powerPlusUnnamedApps = KeepAwakeAutomationSupport.enabledConditions(
+            externalDisplayEnabled: false, powerEnabled: true,
+            runningAppsEnabled: true, hasSelectedApps: false)
+        expect(powerPlusUnnamedApps == [.power],
+               "an app condition with no app named is not a condition All has to satisfy")
+        expect(KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: [.power], enabled: powerPlusUnnamedApps, requireAll: true
+        ), "All stays usable while the app list is still empty")
+        expect(KeepAwakeAutomationSupport.action(
+            featureAvailable: true,
+            matchingConditions: [.externalDisplay],
+            enabledConditions: bothDockConditions,
+            requireAll: true,
+            sessionActive: false,
+            automaticSessionActive: false
+        ) == .none, "a monitor on battery does not start an All session")
+        expect(KeepAwakeAutomationSupport.action(
+            featureAvailable: true,
+            matchingConditions: [.runningApps],
+            enabledConditions: KeepAwakeAutomationSupport.enabledConditions(
+                externalDisplayEnabled: false, powerEnabled: true, runningAppsEnabled: true),
+            requireAll: true,
+            sessionActive: true,
+            automaticSessionActive: true
+        ) == .deactivate, "unplugging power ends an All session the running app alone would hold open")
+        expect(KeepAwakeAutomationSupport.action(
+            featureAvailable: true,
+            matchingConditions: [.runningApps],
+            enabledConditions: KeepAwakeAutomationSupport.enabledConditions(
+                externalDisplayEnabled: false, powerEnabled: true, runningAppsEnabled: true),
+            requireAll: false,
+            sessionActive: true,
+            automaticSessionActive: true
+        ) == .none, "the same unplug leaves an Any session running, which is why All exists")
+        // The mode control in the panel card gets the panel's 308pt of content
+        // less the card's 10pt gutters, the Keep Awake indent and the
+        // disclosure indent. A segmented control wider than that truncates its
+        // labels, and the real control is what knows its own insets.
+        // The control cannot be rendered here, so its compact sizing is pinned
+        // as source shape: every tile, font and inset in that editor follows
+        // `compact`, and this one control keeping the regular size inside the
+        // panel card is the regression it is guarded against.
+        let automationEditor = (try? String(
+            contentsOfFile: "Sources/Vorssaint/UI/KeepAwakeAutomationView.swift",
+            encoding: .utf8)) ?? ""
+        expect(automationEditor.contains(".pickerStyle(.segmented)")
+                && automationEditor.contains(".controlSize(compact ? .small : .regular)"),
+               "the match mode picker follows the compact layout of the panel card")
+        let matchModeWidth = 308.0 - 20 - 19 - 22
+        for language in AppLanguage.allCases {
+            let strings = FeatureStrings.keepAwakeAutomation(language)
+            let control = NSSegmentedControl(labels: [strings.matchAny, strings.matchAll],
+                                             trackingMode: .selectOne, target: nil, action: nil)
+            control.controlSize = .small
+            control.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+            control.sizeToFit()
+            let width = Double(control.fittingSize.width)
+            expect(width > 0 && width <= matchModeWidth,
+                   "\(language.rawValue): the match mode labels fit the panel card "
+                   + "(\(Int(width))pt of \(Int(matchModeWidth))pt)")
+        }
+        // The handoff a timed session makes when it runs out asks the same
+        // question, so a monitor alone must not carry it on under All.
+        expect(!KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: [.externalDisplay], enabled: bothDockConditions, requireAll: true
+        ), "a timer running out on battery hands nothing over to an All automation")
+        expect(KeepAwakeAutomationSupport.conditionsSatisfied(
+            matching: [.externalDisplay], enabled: bothDockConditions, requireAll: false
+        ), "the same timer still hands over under Any")
         expect(KeepAwakeAutomationSupport.isScreenLocked(
             sessionDictionary: ["CGSSessionScreenIsLocked": true]
         ), "the Keep Awake lock guard reads a locked session")
@@ -2572,6 +2676,20 @@ struct MetricsTests {
             Defaults.migrateSwitcherWindowlessFinder(in: migrationDefaults)
             expect(migrationDefaults.object(forKey: DefaultsKey.switcherWindowlessApps) == nil,
                    "a setup that kept the windowless desktop app is left exactly as it was")
+
+            migrationDefaults.set(["display|port"],
+                                  forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+            Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
+            expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
+                   && migrationDefaults.bool(
+                    forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked),
+                   "verdicts cached before paired discovery requests are classified again")
+            migrationDefaults.set(["display|port"],
+                                  forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+            Defaults.recheckBrightnessDDCWriteOnlyPaths(in: migrationDefaults)
+            expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+                   == ["display|port"],
+                   "the recheck runs once and keeps later verdicts")
 
             migrationDefaults.removeObject(
                 forKey: DefaultsKey.unifiedScreenCaptureShortcutMigrated)
@@ -2940,6 +3058,43 @@ struct MetricsTests {
                && !SwitcherSupport.isConfirmedHiddenAppWindow(appIsHidden: true,
                                                               windowSpaces: []),
                "App Switcher keeps only hidden-app surfaces assigned to a real desktop")
+
+        // Real parked windows remain ordered in; a dismissed surface can
+        // retain the same desktop assignment but is explicitly ordered out.
+        for visibleSpaces: Set<UInt64> in [[1], [2]] {
+            let hidden = SpaceHopSupport.isParkedOnHiddenSpace(
+                windowSpaces: [visibleSpaces.contains(1) ? 2 : 1], visibleSpaces: visibleSpaces)
+            for ordered in [true, false] {
+                for fallback in [true, false] {
+                    expect(SwitcherSupport.keepsUnmatchedWindow(
+                        isOnHiddenSpace: hidden, isConfirmedHiddenAppWindow: false,
+                        isExcludedFromWindowCycle: false, isOrderedIn: ordered,
+                        allowsUnverifiedHiddenSpace: fallback) == (ordered || fallback),
+                           "ordering recovers parked siblings without removing the earlier minimized or fullscreen exceptions")
+                }
+            }
+        }
+        for hidden in [true, false] {
+            for hiddenApp in [true, false] {
+                for excluded in [true, false] {
+                    for ordered: Bool? in [true, false, nil] {
+                        for fallback in [true, false] {
+                            let keep = SwitcherSupport.keepsUnmatchedWindow(
+                                isOnHiddenSpace: hidden, isConfirmedHiddenAppWindow: hiddenApp,
+                                isExcludedFromWindowCycle: excluded, isOrderedIn: ordered,
+                                allowsUnverifiedHiddenSpace: fallback)
+                            if excluded { expect(!keep, "cycle-excluded helpers never reappear") }
+                            else if hiddenApp { expect(keep, "hiding an app is not closing its windows") }
+                            else if !hidden { expect(!keep, "an unmatched visible-desktop surface is not a parked window") }
+                            else if ordered == nil {
+                                expect(keep == fallback, "an unavailable ordering query preserves the earlier desktop fallback")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        DockPreviewScopeTests.run { expect($0, $1) }
 
         // MARK: Stale surfaces without an Accessibility witness (issue #807)
 
@@ -3652,6 +3807,21 @@ struct MetricsTests {
                "hidden preview cards cannot close a window")
         expect(registeredDefaults[DefaultsKey.dockPreviewEnabled] as? Bool == false,
                "Dock Preview is opt-in for clean installs")
+        expect(registeredDefaults[DefaultsKey.dockPreviewCurrentSpaceOnly] as? Bool == false,
+               "Dock Preview shows all desktops by default")
+        for currentDesktopOnly in [false, true] {
+            let backup = SettingsBackupSupport.payload(appVersion: "test") { key in
+                switch key {
+                case DefaultsKey.dockPreviewCurrentSpaceOnly: return currentDesktopOnly
+                case DefaultsKey.switcherCurrentSpaceOnly: return !currentDesktopOnly
+                default: return nil
+                }
+            }
+            let restored = SettingsBackupSupport.sanitizedSettings(from: backup)
+            expect(restored?[DefaultsKey.dockPreviewCurrentSpaceOnly] as? Bool == currentDesktopOnly
+                   && restored?[DefaultsKey.switcherCurrentSpaceOnly] as? Bool == !currentDesktopOnly,
+                   "backup preserves independent Dock Preview and Switcher desktop choices")
+        }
         expect(registeredDefaults[DefaultsKey.dockPreviewBackgroundOpacity] as? Double == 1.0,
                "the Dock Preview panel starts fully solid")
         expect(registeredDefaults[DefaultsKey.dockPreviewQuitAppOnClose] as? Bool == false,
@@ -3911,16 +4081,16 @@ struct MetricsTests {
         // decision above is made consciously, never by omission.
         let releasePlist = NSDictionary(contentsOfFile: "Resources/Info.plist")
         let plistVersion = (releasePlist?["CFBundleShortVersionString"] as? String) ?? ""
-        expect(plistVersion == "3.3.5",
+        expect(plistVersion == "3.4.0-beta.2.1",
                "bumping the app version requires re-deciding the support prompt pin above")
         let plistBuild = (releasePlist?["CFBundleVersion"] as? String) ?? ""
-        expect(plistBuild == "86",
+        expect(plistBuild == "89",
                "every app version needs its own incremented bundle build")
         expect(SupportUpdateIntroInfo.releaseVersion == "3.3.2",
                "the support prompt remains deliberately pinned to 3.3.2")
         expect(UpdateHighlightsInfo.releaseVersion == "3.4.0-beta.1",
                "the prepared tour belongs to the first 3.4 beta without changing the installed version")
-        for version in ["3.4.0-beta.1", "3.4.0-beta.2", "3.4.0-beta.10"] {
+        for version in ["3.4.0-beta.1", "3.4.0-beta.2", "3.4.0-beta.2.1", "3.4.0-beta.10"] {
             expect(UpdateHighlightsInfo.shouldShow(appVersion: version, lastSeenVersion: nil)
                    && UpdateHighlightsInfo.shouldShow(appVersion: version, lastSeenVersion: "3.3.3"),
                    "the notch tour introduces this beta cycle to new and returning users")
@@ -3929,7 +4099,7 @@ struct MetricsTests {
             expect(!SupportUpdateIntroInfo.shouldShow(appVersion: version, lastSeenVersion: nil),
                    "beta updates do not request the support and social introduction")
         }
-        for version in ["3.3.5", "3.4.0", "3.4.1", "3.4.0-rc.1", "3.4.0-beta.0", "3.4.0-beta.no", "3.5.0-beta.1", "4.0.0"] {
+        for version in ["3.3.5", "3.4.0", "3.4.1", "3.4.0-rc.1", "3.4.0-beta.0", "3.4.0-beta.no", "3.4.0-beta.2.no", "3.4.0-beta.2.1.1", "3.5.0-beta.1", "4.0.0"] {
             expect(!UpdateHighlightsInfo.matchesRelease(version)
                    && !UpdateHighlightsInfo.shouldShow(appVersion: version, lastSeenVersion: nil),
                    "previewing from the current build and other release cycles cannot consume the future beta tour")
@@ -4865,6 +5035,14 @@ struct MetricsTests {
                 && Defaults.registeredDefaults[DefaultsKey.windowLayoutShortcutCenterHalf] as? String
                     == WindowLayoutAction.clearedShortcutStorageValue,
                "center half starts with no combination of its own")
+        expect(WindowLayoutAction.allCases.contains(.centerTwoThirds)
+                && WindowLayoutAction.centerTwoThirds.shortcutID == 56
+                && WindowLayoutAction(shortcutID: 56) == .centerTwoThirds,
+               "center two thirds exists and answers to its own shortcut id")
+        expect(WindowLayoutAction.centerTwoThirds.defaultShortcut == nil
+                && Defaults.registeredDefaults[DefaultsKey.windowLayoutShortcutCenterTwoThirds] as? String
+                    == WindowLayoutAction.clearedShortcutStorageValue,
+               "center two thirds starts with no combination of its own")
         expect(Set(WindowLayoutAction.allCases.map(\.shortcutID)).count
                 == WindowLayoutAction.allCases.count,
                "every layout action keeps a distinct shortcut id")
@@ -4872,7 +5050,8 @@ struct MetricsTests {
             let layoutStrings = FeatureStrings.windowLayout(language)
             expect(!layoutStrings.fullScreen.isEmpty && !layoutStrings.previousDisplay.isEmpty
                     && !layoutStrings.marginMaximize.isEmpty
-                    && !layoutStrings.centerHalf.isEmpty,
+                    && !layoutStrings.centerHalf.isEmpty
+                    && !layoutStrings.centerTwoThirds.isEmpty,
                    "\(language.rawValue) names the latest window layout actions")
         }
         expect(WindowLayoutGeometry.accepts(actualRect: .zero, targetRect: .zero,
@@ -5920,6 +6099,8 @@ struct MetricsTests {
                "Media image background starts transparent")
         expect(registeredDefaults[DefaultsKey.mediaImagePreserveModificationDate] as? Bool == false,
                "Media image conversion does not preserve modification dates by default")
+        expect(registeredDefaults[DefaultsKey.mediaImageSaveInSubfolder] as? Bool == false,
+               "Media image batches keep their current output folder by default")
         expect(registeredDefaults[DefaultsKey.mediaImageProfiles] as? String == "[]",
                "Media image profiles start empty")
         expect((registeredDefaults[DefaultsKey.autoQuitExceptions] as? [String]) == Defaults.mandatoryAutoQuitExceptionBundleIDs,
@@ -6539,6 +6720,9 @@ struct MetricsTests {
         expect(WindowLayoutGeometry.rect(for: .centerHalf, current: currentWindow, visibleFrame: visibleFrame)
                == CGRect(x: 360, y: 40, width: 720, height: 860),
                "window layout center half sits half wide in the middle of the screen")
+        expect(WindowLayoutGeometry.rect(for: .centerTwoThirds, current: currentWindow, visibleFrame: visibleFrame)
+               == CGRect(x: 240, y: 40, width: 960, height: 860),
+               "window layout center two thirds sits two thirds wide in the middle of the screen")
         expect(WindowLayoutGeometry.rect(for: .leftHalf, current: currentWindow, visibleFrame: visibleFrame,
                                          windowGap: 16)
                == CGRect(x: 0, y: 40, width: 712, height: 860),
@@ -7166,6 +7350,10 @@ struct MetricsTests {
                "moving down-right triggers bottom right")
         expect(WindowDirectionalGestureSupport.action(from: dirOrigin, to: CGPoint(x: 160, y: 160)) == .bottomLeft,
                "moving down-left triggers bottom left")
+        expect(!WindowDirectionalGestureSupport.shouldApplyKeyboardManualOverride(isAutorepeat: true),
+               "auto-repeat never forces a manual maximize/minimize override")
+        expect(WindowDirectionalGestureSupport.shouldApplyKeyboardManualOverride(isAutorepeat: false),
+               "a distinct Space, Return, or Up tap still maximizes while the ring is open")
 
         expect(MediaImageFormat.sanitized("pdf") == .pdf,
                "Image converter accepts the PDF format")
@@ -8281,6 +8469,80 @@ struct MetricsTests {
                                                                        selectedUnavailable: true,
                                                                        shouldApplyPreferred: false),
                "missing preferred input falls back visually without deleting preference")
+        do {
+            let original = ["app.a", "app.b", "app.c", "app.d"]
+            var layout = MixerAppArrangement()
+            expect(layout.ordered(original, identity: { $0 }) == original,
+                   "mixer keeps alphabetical input until the user arranges it")
+            layout.move("app.c", offset: -1, visibleIDs: original)
+            let arranged = ["app.a", "app.c", "app.b", "app.d"]
+            expect(layout.ordered(original, identity: { $0 }) == arranged,
+                   "mixer moves an app to its chosen position")
+            let reopened = MixerAppArrangement(rawValue: layout.rawValue)
+            expect(reopened.ordered(["app.a", "app.b", "app.d"], identity: { $0 }) == ["app.a", "app.b", "app.d"]
+                   && reopened.ordered(original, identity: { $0 }) == arranged,
+                   "closing and reopening an app or mixer preserves its position")
+            layout.move("app.d", offset: -1, visibleIDs: ["app.a", "app.b", "app.d"])
+            expect(layout.ordered(original, identity: { $0 }) == ["app.a", "app.c", "app.d", "app.b"],
+                   "reordering live rows preserves the slot of a closed or hidden app")
+            layout.togglePin("app.b")
+            layout.togglePin("app.d")
+            expect(layout.ordered(original, identity: { $0 }) == ["app.d", "app.b", "app.a", "app.c"],
+                   "pinned apps lead the list while keeping their chosen order")
+            layout.move("app.b", offset: -1, visibleIDs: layout.ordered(original, identity: { $0 }))
+            expect(layout.ordered(original, identity: { $0 }) == ["app.b", "app.d", "app.a", "app.c"],
+                   "pinned apps can be rearranged independently")
+            expect(layout.neighbor(of: "app.d", offset: 1, visibleIDs: ["app.b", "app.d", "app.a", "app.c"]) == nil
+                   && layout.neighbor(of: "app.a", offset: -1, visibleIDs: ["app.b", "app.d", "app.a", "app.c"]) == nil,
+                   "reordering does not cross the pinned boundary")
+            let saved = layout
+            layout.move("missing", offset: -1, visibleIDs: original)
+            expect(layout == saved, "a vanished row cannot overwrite the saved arrangement")
+            layout.togglePin("app.b")
+            expect(!layout.isPinned("app.b") && layout.isPinned("app.d"), "unpinning affects only the chosen app")
+            expect(layout.ordered(original + ["app.e"], identity: { $0 }).last == "app.e",
+                   "new apps follow the remembered order")
+            var dragged = MixerAppArrangement()
+            dragged.move("app.a", to: "app.d", after: true, visibleIDs: original)
+            expect(dragged.ordered(original, identity: { $0 }) == ["app.b", "app.c", "app.d", "app.a"],
+                   "one drag can insert the first app below the last app")
+            dragged.move("app.a", to: "app.b", after: false,
+                         visibleIDs: dragged.ordered(original, identity: { $0 }))
+            expect(dragged.ordered(original, identity: { $0 }) == original,
+                   "one drag can insert an app above the first row")
+            dragged.move("app.d", to: "app.a", after: false, visibleIDs: ["app.a", "app.c", "app.d"])
+            expect(dragged.ordered(original, identity: { $0 }) == ["app.d", "app.b", "app.a", "app.c"],
+                   "a long drag leaves a closed app's remembered slot intact")
+            let beforeInvalidDrop = dragged
+            dragged.move("app.a", to: "missing", after: false, visibleIDs: original)
+            dragged.move("missing", to: "app.a", after: true, visibleIDs: original)
+            dragged.move("app.a", to: "app.a", after: false, visibleIDs: original)
+            expect(dragged == beforeInvalidDrop, "missing or same-row drop targets do not change preferences")
+            dragged.togglePin("app.d")
+            let beforeCrossGroupDrop = dragged
+            dragged.move("app.a", to: "app.d", after: false, visibleIDs: original)
+            expect(dragged == beforeCrossGroupDrop, "dragging does not silently pin or unpin an app")
+            let malformed = MixerAppArrangement(rawValue: "invalid")
+            expect(malformed == MixerAppArrangement(), "invalid saved arrangement falls back safely")
+            let duplicate = MixerAppArrangement(rawValue: #"{"order":["app.b","app.b","","app.a"],"pinned":["app.b","app.b",""]}"#)
+            expect(duplicate.order == ["app.b", "app.a"] && duplicate.pinned == ["app.b"],
+                   "restored arrangement removes duplicate and empty identities")
+            expect(Defaults.registeredDefaults[DefaultsKey.mixerAppArrangement] as? String == ""
+                   && SettingsBackupSupport.exportKeys().contains(DefaultsKey.mixerAppArrangement),
+                   "mixer arrangement is opt-in and included in settings backups")
+            let payload = SettingsBackupSupport.payload(appVersion: "test") { key in
+                key == DefaultsKey.mixerAppArrangement ? saved.rawValue : nil
+            }
+            let data = try? PropertyListSerialization.data(fromPropertyList: payload, format: .xml, options: 0)
+            let plist = data.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) } as? [String: Any]
+            let restored = plist.flatMap { SettingsBackupSupport.sanitizedSettings(from: $0) }
+            let restoredLayout = MixerAppArrangement(rawValue: restored?[DefaultsKey.mixerAppArrangement] as? String ?? "")
+            expect(restoredLayout == saved && restoredLayout.ordered(original, identity: { $0 }) == ["app.b", "app.d", "app.a", "app.c"],
+                   "export and import preserve both pins and positions, including absent apps")
+            expect(!SettingsBackupSupport.valueLooksRight(DefaultsKey.mixerAppArrangement, ["invalid"]),
+                   "backup rejects an arrangement with the wrong storage type")
+        }
+
         expect(MixerRoutingSupport.displayOrderedBefore(name: "Music", id: "com.apple.Music",
                                                         otherName: "Safari", otherID: "com.apple.Safari"),
                "mixer rows order by display name")
@@ -12079,16 +12341,42 @@ struct MetricsTests {
         expect(groupedIconLayout.appRowContentWidth
                >= CGFloat(appGroups.count) * SwitcherIconRowLayout.appTileWidth,
                "App Switcher icon-row layout uses full app tile width")
-        // The viewport used to be sized to hold every card of the selected app,
-        // which is what made the panel widen and re-centre on each step (#783).
-        // It now stops at the icon row and scrolls past it, while still holding
-        // one whole card whatever the row is doing.
-        expect(groupedIconLayout.previewContentWidth >= SwitcherIconRowLayout.previewCardWidth
-               && groupedIconLayout.previewSurfaceWidth
-                    <= max(groupedIconLayout.appRowSurfaceWidth,
-                           SwitcherIconRowLayout.previewCardWidth
-                               + SwitcherIconRowLayout.previewPanelPadding * 2),
-               "App Switcher icon-row preview stays inside the icon row instead of widening the panel")
+        expect(groupedIconLayout.previewFitsWithoutScrolling(cardCount: 2),
+               "App Switcher shows a pair of windows even with a short icon row")
+        do {
+            let savedPreviewSize = UserDefaults.standard.object(forKey: DefaultsKey.previewSize)
+            defer {
+                if let savedPreviewSize {
+                    UserDefaults.standard.set(savedPreviewSize, forKey: DefaultsKey.previewSize)
+                } else {
+                    UserDefaults.standard.removeObject(forKey: DefaultsKey.previewSize)
+                }
+            }
+            for size in Defaults.allowedPreviewSizes {
+                UserDefaults.standard.set(size, forKey: DefaultsKey.previewSize)
+                for width in [640.0, 800.0, 1440.0] {
+                    for hints in [false, true] {
+                        let frame = CGRect(x: 0, y: 0, width: width, height: 900)
+                        let pair = SwitcherIconRowLayout.compute(appCount: 2, selectedWindowCount: 2,
+                            maximumWindowCount: 8, screenVisibleFrame: frame, showsShortcutHints: hints)
+                        let single = SwitcherIconRowLayout.compute(appCount: 2, selectedWindowCount: 1,
+                            maximumWindowCount: 8, screenVisibleFrame: frame, showsShortcutHints: hints)
+                        let many = SwitcherIconRowLayout.compute(appCount: 2, selectedWindowCount: 8,
+                            maximumWindowCount: 8, screenVisibleFrame: frame, showsShortcutHints: hints)
+                        expect(pair.previewFitsWithoutScrolling(cardCount: 2),
+                               "App Switcher keeps two windows visible at every preview size")
+                        expect(pair.panelSize.width == single.panelSize.width
+                               && pair.panelSize.width == many.panelSize.width,
+                               "App Switcher keeps short icon rows stationary when changing apps")
+                        expect(pair.panelSize.width <= width * 0.96
+                               && !many.previewFitsWithoutScrolling(cardCount: 8),
+                               "App Switcher bounds multi-window previews to the display and keeps overflow scrollable")
+                        expect(single.previewContentWidth == SwitcherIconRowLayout.previewCardWidth,
+                               "App Switcher keeps single-window surfaces compact within the stable panel")
+                    }
+                }
+            }
+        }
         // A capped viewport can hold fewer cards than it looks like, because the
         // row puts spacing between them. Counting by card width alone reports a
         // fit while the last card is still clipped, and the scroll view then
@@ -12330,6 +12618,17 @@ struct MetricsTests {
                "App Switcher activates only the selected window when a window target exists")
         expect(SwitcherSupport.shouldActivateAllWindows(targetsSpecificWindow: false),
                "App Switcher can activate the full app for app-only entries")
+        // App-level activation can raise sibling windows, so a window-scoped
+        // plan first asks the window server for the exact window (issue #1503).
+        let windowScopedPlan = SwitcherSupport.activationPlan(targetsSpecificWindow: true)
+        let appScopedPlan = SwitcherSupport.activationPlan(targetsSpecificWindow: false)
+        expect(SwitcherSupport.appActivationRoute(plan: windowScopedPlan, windowID: 77)
+               == .exactWindow(77),
+               "a selected window is fronted by the window server, not by activating its app")
+        expect(SwitcherSupport.appActivationRoute(plan: appScopedPlan, windowID: 77) == .wholeApp,
+               "an app entry still activates the whole app the way Command-Tab does")
+        expect(SwitcherSupport.appActivationRoute(plan: windowScopedPlan, windowID: nil) == .wholeApp,
+               "a window-scoped plan without a window id has only the app to activate")
         expect(SwitcherSupport.shouldRestoreSourceAfterTargetMinimize(targetPID: 10,
                                                                       sourcePID: 20,
                                                                       frontmostPID: 10,
@@ -13780,6 +14079,12 @@ struct MetricsTests {
                    && !strings.smoothScrollStepLabel.contains("—")
                    && !strings.smoothScrollResponseLabel.contains("—"),
                    "\(prefix) smooth scrolling controls are present without em dash")
+            expectFormat(strings.secureInputHeldFormat, ["@"], "\(prefix) secure input holder format")
+            expectFormat(strings.secureInputRevealFormat, ["@"], "\(prefix) secure input reveal format")
+            expect(!strings.secureInputTitle.isEmpty
+                   && !strings.secureInputUnattributed.isEmpty
+                   && !strings.secureInputUnidentified.isEmpty,
+                   "\(prefix) secure input copy is translated")
             expect(strings.quickToolsTab == strings.launcherName,
                    "\(prefix) Quick panel keeps the same name in Settings")
             expectFormat(strings.cutMovedPluralFormat, ["d"], "\(prefix) cut plural format")
@@ -13881,6 +14186,10 @@ struct MetricsTests {
             expect(!strings.dockPreviewBackgroundOpacityCaption.isEmpty
                    && !strings.dockPreviewBackgroundOpacityCaption.contains("—"),
                    "\(prefix) Dock Preview background caption is present without em dash")
+            expect(!strings.dockPreviewCurrentSpaceOnlyCaption.isEmpty
+                   && !strings.dockPreviewCurrentSpaceOnlyCaption.contains("—")
+                   && strings.dockPreviewCurrentSpaceOnlyCaption != strings.switcherCurrentSpaceOnlyCaption,
+                   "\(prefix) Dock Preview explains its own desktop scope")
             expect(!strings.dockPreviewOpenDelay.isEmpty
                    && !strings.dockPreviewOpenDelay.contains("—"),
                    "\(prefix) Dock Preview open delay title is present without em dash")
@@ -14886,21 +15195,20 @@ struct MetricsTests {
 
         // MARK: Features hub catalog
 
-        expect(AppFeature.allCases.count == 68, "feature catalog has 68 features")
+        expect(AppFeature.allCases.count == 70, "feature catalog has 70 features")
         expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         expect(AppFeature.allCases.map(\.rawValue) == [
             "switcher", "dockPreview", "dockClick", "windowMaximizer", "windowLayout", "autoQuit",
-            "scrollInverter", "focusFollowsMouse", "smoothScroll", "mouseAcceleration", "mouseNavigation", "mouseButtonShortcuts", "middleClick",
-            "mouseClickDebounce", "keyboardDebounce", "textSnippets", "layoutSwitcher", "superKey",
-            "quitWindowProtection",
+            "scrollInverter", "scrollHorizontal", "focusFollowsMouse", "smoothScroll", "mouseAcceleration", "mouseNavigation", "mouseButtonShortcuts", "middleClick",
+            "mouseClickDebounce", "keyboardDebounce", "textSnippets", "layoutSwitcher", "superKey", "quitWindowProtection",
             "clipboardHistory", "pastePlain", "finderCutPaste", "finderRename", "shelf", "urlCleaner",
             "diskImageInstaller",
             "mixer", "soundOutputSwitcher", "micMute", "musicBlock",
             "keepAwake", "brightness", "extraBrightness", "bluetoothSleep",
             "quickLauncher", "quickToggles", "colorPicker", "screenOCR", "cleaningMode", "mediaTools",
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
-            "radialMenu", "scratchpad", "commandBar", "screenRecorder", "killProcess", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchDownloads",
+            "radialMenu", "scratchpad", "commandBar", "screenRecorder", "killProcess", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads",
             "youtubeTranscriber",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
             "fanControl",
@@ -15031,7 +15339,7 @@ struct MetricsTests {
                 && AppFeature.allCases.filter {
                     $0 != .focusFollowsMouse && $0 != .fanControl && $0 != .diskImageInstaller
                         && $0 != .killProcess && $0 != .layoutSwitcher
-                        && $0 != .youtubeTranscriber
+                        && $0 != .youtubeTranscriber && $0 != .scrollHorizontal
                 }.allSatisfy {
                     (AppFeature.availabilityDefaults[$0.availabilityKey] as? Bool) == true
                 },
@@ -15041,9 +15349,15 @@ struct MetricsTests {
                "every feature belongs to exactly one group")
         expect(!FeatureGroup.allCases.contains { AppFeature.features(in: $0).isEmpty },
                "no hub group is empty")
+        expect(AppFeature.features(in: .dynamicIsland) == [
+            .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer,
+            .notchAccessories, .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads,
+        ], "the Dynamic Island heads its own hub section, followed by its extensions")
+        expect(AppFeature.dynamicIslandExtensions == Array(AppFeature.features(in: .dynamicIsland).dropFirst()),
+               "the Dynamic Island's extensions are every other feature of its section")
         expect(AppPermission.allCases.map(\.rawValue) == [
             "accessibility", "screenRecording", "fullDiskAccess", "filesAndFolders", "notifications",
-            "automationFinder", "automationTerminal", "audioCapture", "microphone", "camera",
+            "automationFinder", "automationTerminal", "automationPlayback", "audioCapture", "microphone", "camera",
             "appManagement", "calendar",
         ], "permission portal contains every supported permission")
         let onboardingViewSource = (try? String(
@@ -15584,7 +15898,7 @@ struct MetricsTests {
                "horizontal-only inversion counts as using accessibility")
         expect(AppFeature.scrollInverter.enabledKeys == [DefaultsKey.scrollInverterEnabled,
                                                           DefaultsKey.scrollInverterHorizontalEnabled],
-               "the scroll direction feature tracks both independent axes")
+               "the inversion feature tracks only its own axes")
         expect(activeSet(.accessibility, on: [DefaultsKey.focusFollowsMouseEnabled])
                 .contains(.focusFollowsMouse),
                "focus follows mouse reports its live accessibility use")
@@ -16387,6 +16701,14 @@ struct MetricsTests {
                 == BrightnessSupport.retryAttempts + 1
                 && BrightnessSupport.ddcProbeWriteCycles(classifyingChannel: true) == 1,
                "channel discovery keeps its reply chances but sends one spaced write each")
+        expect(BrightnessSupport.ddcProbeWriteCycles(classifyingChannel: true,
+                                                     isFinalAttempt: true)
+                == BrightnessSupport.writeCycles,
+               "discovery pairs its requests once before writing a channel off as unreadable")
+        expect(BrightnessSupport.ddcProbeWriteCycles(classifyingChannel: false,
+                                                     isFinalAttempt: true)
+                == BrightnessSupport.writeCycles,
+               "a classified channel keeps its paired requests on every attempt")
         expect(BrightnessSupport.ddcProbeAttempts()
                 == BrightnessSupport.retryAttempts + 1
                 && BrightnessSupport.ddcProbeWriteCycles(classifyingChannel: false)
@@ -16421,6 +16743,24 @@ struct MetricsTests {
         expect(!SettingsBackupSupport.exportKeys().contains(
             DefaultsKey.brightnessDDCWriteOnlyPaths),
                "per-monitor DDC capability never travels in a settings backup")
+        // Naming the key in the machine-state list is the part worth holding:
+        // neither path key is a registered default, so asking only whether the
+        // export contains it would pass with the list emptied.
+        expect(SettingsBackupSupport.machineStateKeys.contains(
+            DefaultsKey.brightnessForcedSoftwarePaths)
+                && !SettingsBackupSupport.exportKeys().contains(
+                    DefaultsKey.brightnessForcedSoftwarePaths),
+               "a hand-picked software dimming route never travels in a settings backup")
+        // The rows on the Energy page are the same displays as the panel's,
+        // where the slider is just as dead, so both surfaces offer the way out.
+        // Neither can be rendered here, so the shared control is pinned as
+        // source shape.
+        for surface in ["Sources/Vorssaint/UI/Settings/SettingsView.swift",
+                        "Sources/Vorssaint/UI/MenuPanel/BrightnessSection.swift"] {
+            let source = (try? String(contentsOfFile: surface, encoding: .utf8)) ?? ""
+            expect(source.contains("SoftwareDimmingButton(display: display"),
+                   "\(surface) offers the software dimming choice on its display rows")
+        }
         let oneDisplay = BrightnessSupport.DisplayTopology(online: [1], active: [1])
         let twoDisplays = BrightnessSupport.DisplayTopology(online: [1, 2], active: [1, 2])
         expect(!BrightnessSupport.shouldQueueRebuild(topology: oneDisplay, pending: oneDisplay),
@@ -16434,6 +16774,24 @@ struct MetricsTests {
                "a brightness change made during discovery survives the final probe")
         expect(BrightnessSupport.brightnessAfterRebuild(probed: 0.3, pending: nil) == 0.3,
                "a rebuild keeps the monitor reading when no change is waiting")
+        expect(!BrightnessSupport.canConfigureDisplay(enabled: true, isBuiltIn: true,
+                                                     lidClosed: true),
+               "a closed lid prevents enabling the built-in display")
+        for lidClosed: Bool? in [true, false, nil] {
+            expect(BrightnessSupport.canConfigureDisplay(enabled: true, isBuiltIn: false,
+                                                         lidClosed: lidClosed),
+                   "external display enables ignore lid state")
+            for isBuiltIn in [true, false] {
+                expect(BrightnessSupport.canConfigureDisplay(enabled: false, isBuiltIn: isBuiltIn,
+                                                             lidClosed: lidClosed),
+                       "display disables ignore lid state")
+            }
+        }
+        for lidClosed: Bool? in [false, nil] {
+            expect(BrightnessSupport.canConfigureDisplay(enabled: true, isBuiltIn: true,
+                                                         lidClosed: lidClosed),
+                   "an open or unavailable lid reading preserves built-in restoration")
+        }
         expect(BrightnessSupport.canDisableDisplay(drawableDisplayIDs: [1, 3], target: 3),
                "one display can be disabled while another remains active")
         expect(!BrightnessSupport.canDisableDisplay(drawableDisplayIDs: [1], target: 1),
@@ -16476,6 +16834,16 @@ struct MetricsTests {
         expect((beforeDisplayConfiguration.components(separatedBy: "func ").last ?? "")
                 .contains("Thread.isMainThread"),
                "the display reconfiguration transaction refuses to start off the main thread")
+
+        let configurationEntry = (beforeDisplayConfiguration
+            .components(separatedBy: "func ").last ?? "")
+            .replacingOccurrences(of: #"(?s)/\*.*?\*/|//[^\n]*"#, with: "",
+                                  options: .regularExpression)
+        expect(configurationEntry.range(of: #"\bBrightnessSupport\s*\.\s*canConfigureDisplay\s*\("#,
+                                        options: .regularExpression) != nil
+               && configurationEntry.range(of: #"\bCGDisplayIsBuiltin\s*\("#,
+                                           options: .regularExpression) != nil,
+               "the shared transaction checks the live built-in and lid state before beginning")
 
         // A `UserDefaults` write posts `didChangeNotification`, and the
         // observers registered with `queue: .main` make that post wait for the
@@ -16677,6 +17045,74 @@ struct MetricsTests {
                "brightness overlay percentage rounds and clamps safely")
 
         // MARK: Text snippets engine (issue #201)
+
+        // Driven by synthetic listings rather than this machine's
+        // /System/Library/Sounds, so the assertions mean the same thing on
+        // every macOS the CI runners use.
+        expect(TextSnippetSupport.alertSoundNames(from: ["Tink.aiff", "Basso.aiff"]) == ["Basso", "Tink"],
+               "directory entries become sorted sound names without their extension")
+        expect(TextSnippetSupport.alertSoundNames(from: ["Glass.AIFF"]) == ["Glass"],
+               "an uppercase extension is still recognized")
+        expect(TextSnippetSupport.alertSoundNames(from: ["Readme.txt", "Sub.caf"]).isEmpty == false,
+               "a listing with no aiff falls back rather than emptying the picker")
+        expect(TextSnippetSupport.alertSoundNames(from: ["Readme.txt"])
+                == TextSnippetSupport.fallbackAlertSoundNames,
+               "an unreadable or foreign sounds directory falls back to the known names")
+        expect(TextSnippetSupport.alertSoundNames(from: []) == TextSnippetSupport.fallbackAlertSoundNames,
+               "an empty directory falls back to the known names")
+
+        expect(TextSnippetSupport.resolvedSoundName(stored: "Tink", available: ["Basso", "Tink"]) == "Tink",
+               "a stored sound the system still offers is kept")
+        expect(TextSnippetSupport.resolvedSoundName(stored: "Gone", available: ["Basso", "Tink"]) == "Tink",
+               "a stored sound this Mac no longer has falls back to the default instead of going silent")
+        expect(TextSnippetSupport.resolvedSoundName(stored: nil, available: ["Basso", "Tink"]) == "Tink",
+               "no stored sound uses the default")
+        expect(TextSnippetSupport.resolvedSoundName(stored: "Gone", available: ["Basso"]) == "Basso",
+               "with neither the stored sound nor the default present, the first offered one is used")
+        expect(TextSnippetSupport.resolvedSoundName(stored: "Gone", available: []) == nil,
+               "nothing to play resolves to nothing rather than a name that cannot load")
+
+
+        expect(Defaults.registeredDefaults[DefaultsKey.snippetSoundEnabled] as? Bool == false,
+               "sound on expansion stays off until asked for")
+        expect(Defaults.registeredDefaults[DefaultsKey.snippetSoundName] as? String
+                == Defaults.defaultSnippetSoundName,
+               "the registered default is the shared constant, not a second copy of the name")
+        expect(TextSnippetSupport.fallbackAlertSoundNames.contains(Defaults.defaultSnippetSoundName),
+               "the default sound is one the fallback list offers")
+        expect(FileManager.default.fileExists(
+                atPath: TextSnippetSupport.soundFileURL(for: Defaults.defaultSnippetSoundName).path),
+               "the default sound is played from the file macOS ships for it")
+        expect(Set(TextSnippetSupport.fallbackAlertSoundNames).count
+                == TextSnippetSupport.fallbackAlertSoundNames.count,
+               "no duplicate names in the fallback list")
+
+        expect(AlertSoundStrings.displayName(for: "Tink", language: .enUS) == "Boop",
+               "macOS has shown Tink as Boop in Sound settings since Big Sur")
+        expect(AlertSoundStrings.displayName(for: "Ping", language: .enUS) == "Sonar",
+               "macOS has shown Ping as Sonar in Sound settings since Big Sur")
+        expect(AlertSoundStrings.displayName(for: "Tink", language: .fr) == "Boop",
+               "a supported language other than English gets its own translated name")
+        expect(AlertSoundStrings.displayName(for: "Ping", language: .ru) == "Сонар",
+               "a supported language other than English gets its own translated name")
+        expect(AlertSoundStrings.displayName(for: "Tink", language: .ja) == "Boop",
+               "Apple's own table keeps the English display name for Japanese, Korean and Chinese")
+        expect(AlertSoundStrings.displayName(for: "Custom", language: .enUS) == "Custom",
+               "a name outside the table is shown unchanged rather than dropped")
+        expect(TextSnippetSupport.fallbackAlertSoundNames.allSatisfy {
+                AlertSoundStrings.displayName(for: $0, language: .enUS) != $0
+            },
+               "every shipped alert sound has a display name distinct from its file name")
+
+        expect(AlertSoundStrings.sortedNames(TextSnippetSupport.fallbackAlertSoundNames, language: .enUS)
+                == ["Tink", "Blow", "Pop", "Glass", "Funk", "Hero", "Frog",
+                    "Basso", "Bottle", "Purr", "Morse", "Ping", "Sosumi", "Submarine"],
+               "the picker orders by what each name shows (Boop, Breeze, Bubble, ...), not by the file name")
+        expect(AlertSoundStrings.sortedNames(["Basso", "Tink"], language: .enUS).first == "Tink",
+               "Boop sorts before Mezzo even though the file name Basso sorts before Tink")
+        expect(Set(AlertSoundStrings.sortedNames(TextSnippetSupport.fallbackAlertSoundNames, language: .enUS))
+                == Set(TextSnippetSupport.fallbackAlertSoundNames),
+               "sorting only reorders the list, it never drops or adds a name")
 
         expect(TextSnippetSupport.sanitizedTrigger("  ;e mail\n") == ";email", "triggers lose whitespace")
         expect(TextSnippetSupport.bufferAppending(String(repeating: "a", count: 64), typed: "b").count
@@ -18363,6 +18799,19 @@ struct MetricsTests {
                 && featureRuntimeSource.components(separatedBy:
                     "RecentCaptureService.shared.syncWithPreferences()").count == 3,
                "the history shortcut opens its window and follows both capture producers")
+        // A palette summoned from another app must appear at once, then leave
+        // when the user activates a different app instead of waiting for ours.
+        let recentCapturePaletteCode = recentCaptureServiceSource
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        expect(recentCapturePaletteCode.contains("panel.hidesOnDeactivate = false")
+                && !recentCapturePaletteCode.contains("hidesOnDeactivate = true")
+                && recentCapturePaletteCode.contains("NSWorkspace.didActivateApplicationNotification")
+                && !recentCapturePaletteCode.contains("NSApplication.didResignActiveNotification")
+                && recentCapturePaletteCode.contains(
+                    "NSWorkspace.shared.notificationCenter.removeObserver("),
+               "a recent captures palette appears promptly and leaves when another app activates")
         expect(!ScreenshotSupport.captureAvailabilityChanged(
                     activeTools: [.screenshot, .recording],
                     availableTools: [.screenshot, .recording])
@@ -18475,6 +18924,15 @@ struct MetricsTests {
                                                             selectionInProgress: false,
                                                             capturePending: false),
                "the capture chooser disappears for the whole drag and while capture is pending")
+        expect(ScreenshotSupport.offersRepeatLastRegion(isPickingColor: false,
+                                                        storedRegionDisplayIsAvailable: true),
+               "the repeat hint is offered once a region is stored on a display still in the session")
+        expect(!ScreenshotSupport.offersRepeatLastRegion(isPickingColor: false,
+                                                         storedRegionDisplayIsAvailable: false),
+               "no repeat hint before the first capture, or when its display is gone")
+        expect(!ScreenshotSupport.offersRepeatLastRegion(isPickingColor: true,
+                                                         storedRegionDisplayIsAvailable: true),
+               "the colour picker has no region to repeat, matching repeatLastRegion's own guard")
         let captureSelectionSource = (try? String(
             contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotSelectionController.swift",
             encoding: .utf8)) ?? ""
@@ -18525,23 +18983,38 @@ struct MetricsTests {
         // hosted SwiftUI content answers presses that never reach mouseDown.
         let panelBody = quickPreviewCode.components(separatedBy: "class ScreenshotQuickPreviewPanel")
             .dropFirst().first?.components(separatedBy: "\n}").first ?? ""
-        // The opt-in keys the panel only after it is on screen, and the line
-        // above the call is the preference check itself, so dropping the guard
-        // or keying before ordering front both go red.
+        // The preference keys the panel only after it is on screen, and the
+        // line above the call is the preference check itself, so dropping the
+        // guard or keying before ordering front both go red.
         let presentLines = presentBody.components(separatedBy: "\n")
         let orderFrontLine = presentLines.firstIndex { $0.contains("orderFrontRegardless()") } ?? -1
         let makeKeyLine = presentLines.firstIndex { $0.contains("makeKey") } ?? -1
         expect(orderFrontLine >= 0 && makeKeyLine > orderFrontLine
                 && presentLines[makeKeyLine - 1].contains("screenshotPreviewTakesFocus"),
-               "presenting the screenshot preview takes key focus only behind the opt-in, once the panel is on screen")
+               "presenting the screenshot preview takes key focus only behind the preference, once the panel is on screen")
         let makeKeyCount = quickPreviewCode.components(separatedBy: "makeKey").count - 1
         let panelMakeKeyCount = panelBody.components(separatedBy: "makeKey").count - 1
         expect(makeKeyCount == panelMakeKeyCount + 1 && panelMakeKeyCount >= 1,
-               "hover never takes key focus; only the opted-in presentation and the panel's own click hand-off may")
+               "hover never takes key focus; only the preferred presentation and the panel's own click hand-off may")
         expect(panelBody.contains("sendEvent") && panelBody.contains("leftMouseDown")
                 && panelBody.contains("makeKey") && panelBody.contains("super.sendEvent"),
                "clicking the screenshot preview takes key focus and still delivers every preview button")
 
+        // With the controls in Dynamic Island, the island's panel holds key
+        // focus and the selection surface never becomes key on its own, so
+        // AppKit would spend the first click making it key and swallow it.
+        // The overlay view claims that click; comments are stripped so prose
+        // cannot answer for the code.
+        let selectionSource = (try? String(
+            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotSelectionController.swift",
+            encoding: .utf8)) ?? ""
+        let overlayViewBody = selectionSource.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+            .components(separatedBy: "class ScreenshotOverlayView").dropFirst().first?
+            .components(separatedBy: "\n}").first ?? ""
+        expect(overlayViewBody.contains("acceptsFirstMouse") && overlayViewBody.contains("acceptsFirstMouse(for event: NSEvent?) -> Bool { true }"),
+               "the capture surface claims the first click so a drag works while Dynamic Island holds key focus")
         // Both editors state a size the same way. The recorder wrote
         // "1960x1274" beside a screenshot editor that already read
         // "2940 \u{00D7} 1912 px", and the letter x is the tell.
@@ -18920,6 +19393,57 @@ struct MetricsTests {
         expect(ScreenshotSupport.downscaledSize(pixelSize: CGSize(width: 800, height: 600), scale: 1)
                 == CGSize(width: 800, height: 600),
                "a 1x capture never downscales")
+
+        // Every picture the app writes says how big it is on screen, the way
+        // a system screenshot does, so Preview and a paste show a Retina
+        // capture at its own size instead of doubled and softened.
+        func encodedDensity(_ data: Data?) -> (width: Int, dpi: Double)? {
+            guard let data,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?,
+                  let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+                  let dpi = properties[kCGImagePropertyDPIWidth] as? NSNumber
+            else { return nil }
+            return (width.intValue, dpi.doubleValue)
+        }
+        let retinaContext = CGContext(data: nil, width: 8, height: 6, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        retinaContext?.setFillColor(CGColor(gray: 0.5, alpha: 1))
+        retinaContext?.fill(CGRect(x: 0, y: 0, width: 8, height: 6))
+        let retinaCapture = retinaContext?.makeImage()
+        expect(retinaCapture != nil, "a Retina test capture can be drawn")
+        if let retinaCapture {
+            let plain = ScreenshotSupport.BackdropStyle(kind: .none, cornerRadius: 0)
+            let full = ScreenshotRenderer.renderExport(baseImage: retinaCapture, annotations: [],
+                                                       pixelated: nil, scale: 2,
+                                                       annotationShadowsEnabled: false,
+                                                       watermark: ScreenshotSupport.WatermarkStyle(),
+                                                       watermarkImage: nil,
+                                                       style: plain, fill: .none,
+                                                       downscaleTo1x: false)
+            expect(full?.scale == 2 && full?.image.width == 8,
+                   "a Retina export keeps its pixels and its density")
+            let halved = ScreenshotRenderer.renderExport(baseImage: retinaCapture, annotations: [],
+                                                         pixelated: nil, scale: 2,
+                                                         annotationShadowsEnabled: false,
+                                                         watermark: ScreenshotSupport.WatermarkStyle(),
+                                                         watermarkImage: nil,
+                                                         style: plain, fill: .none,
+                                                         downscaleTo1x: true)
+            expect(halved?.scale == 1 && halved?.image.width == 4,
+                   "the 1x option halves the pixels and reports 1x density")
+            let png = encodedDensity(ScreenshotRenderer.pngData(from: retinaCapture, scale: 2))
+            expect(png?.width == 8 && png?.dpi == 144,
+                   "a Retina PNG carries 144 DPI over every pixel")
+            let tiff = encodedDensity(ScreenshotRenderer.tiffData(from: retinaCapture, scale: 2))
+            expect(tiff?.width == 8 && tiff?.dpi == 144,
+                   "the pasteboard TIFF carries the same density as the PNG")
+            expect(encodedDensity(ScreenshotRenderer.pngData(from: retinaCapture, scale: 1))?.dpi == 72,
+                   "a 1x picture stays at 72 DPI")
+            expect(ScreenshotSupport.captureScale(fromDPI: png?.dpi) == 2,
+                   "the stored density reads back as the capture scale")
+        }
         expect(ScreenshotSupport.backdropPadding(for: CGSize(width: 100, height: 100), factor: 0.5) == 24,
                "backdrop padding keeps a floor for tiny captures")
         expect(ScreenshotSupport.backdropPadding(for: CGSize(width: 4000, height: 4000), factor: 1)
@@ -19002,6 +19526,189 @@ struct MetricsTests {
         expect(Defaults.registeredDefaults[DefaultsKey.screenshotBackdropStyle] as? String == ""
                 && Defaults.registeredDefaults[DefaultsKey.screenshotBackdropPresets] as? String == "[]",
                "backdrop style and presets register empty")
+
+        // Watermark: the mark of your own that rides along every capture.
+        let textMark = ScreenshotSupport.WatermarkStyle(kind: .text, text: "  Vorssaint  ",
+                                                        color: "blue", anchor: .topLeading,
+                                                        size: 0.5, opacity: 0.3, rotation: 30)
+        let markRoundTrip = ScreenshotSupport.WatermarkStyle.decoded(textMark.encoded())
+        expect(markRoundTrip == textMark.sanitized() && markRoundTrip.text == "Vorssaint"
+                && markRoundTrip.anchor == .topLeading && markRoundTrip.rotation == 30,
+               "a watermark style round-trips through JSON, trimmed")
+        expect(ScreenshotSupport.WatermarkStyle.decoded(nil).kind == .none
+                && ScreenshotSupport.WatermarkStyle.decoded("").kind == .none
+                && ScreenshotSupport.WatermarkStyle.decoded("not json").kind == .none,
+               "a missing or broken watermark style falls back to none")
+        expect(ScreenshotSupport.WatermarkStyle(kind: .text, text: "   ").sanitized().kind == .none
+                && ScreenshotSupport.WatermarkStyle(kind: .image, imagePath: nil).sanitized().kind == .none
+                && ScreenshotSupport.WatermarkStyle(kind: .image, imagePath: "").sanitized().kind == .none,
+               "a watermark without its text or picture demotes to none")
+        let wildMark = ScreenshotSupport.WatermarkStyle(kind: .text, text: "x", color: "bogus",
+                                                        size: 7, opacity: 0, rotation: 400).sanitized()
+        expect(wildMark.color == "white" && wildMark.size == 1 && wildMark.opacity == 0.05
+                && wildMark.rotation == 90,
+               "watermark sliders clamp and an unknown color reads as white")
+        let brokenMark = ScreenshotSupport.WatermarkStyle(kind: .text, text: "x", size: .nan,
+                                                          opacity: .infinity, rotation: -.infinity)
+            .sanitized()
+        expect(brokenMark.size == 0.3 && brokenMark.opacity == 0.4 && brokenMark.rotation == 0,
+               "non-finite watermark sliders reset to their defaults")
+        expect(ScreenshotSupport.WatermarkStyle(kind: .text, text: String(repeating: "a", count: 500))
+                .sanitized().text.count == ScreenshotSupport.WatermarkStyle.textLimit,
+               "watermark text is capped")
+        expect(Defaults.registeredDefaults[DefaultsKey.screenshotWatermarkStyle] as? String == ""
+                && Defaults.registeredDefaults[DefaultsKey.screenshotWatermarkPresets] as? String == "[]",
+               "the watermark style and presets register empty")
+        let markPresets = [textMark.sanitized(),
+                           ScreenshotSupport.WatermarkStyle(kind: .image, imagePath: "/logo.png",
+                                                            anchor: .center, size: 0.8,
+                                                            opacity: 0.2, rotation: -45)]
+        expect(ScreenshotSupport.decodedWatermarkPresets(
+                ScreenshotSupport.encodedWatermarkPresets(markPresets)) == markPresets,
+               "saved watermarks round-trip through JSON with their placement")
+        expect(ScreenshotSupport.decodedWatermarkPresets("junk").isEmpty
+                && ScreenshotSupport.decodedWatermarkPresets(nil).isEmpty
+                && ScreenshotSupport.decodedWatermarkPresets(
+                    ScreenshotSupport.encodedWatermarkPresets(
+                        [ScreenshotSupport.WatermarkStyle(kind: .text, text: " ")])).isEmpty,
+               "broken preset lists and marks without content decode to nothing")
+        expect(ScreenshotSupport.decodedWatermarkPresets(
+                ScreenshotSupport.encodedWatermarkPresets(
+                    Array(repeating: markPresets[0], count: 40))).count
+                == ScreenshotSupport.backdropPresetLimit,
+               "saved watermarks cap at the presets limit")
+
+        let hdCanvas = CGSize(width: 1920, height: 1080)
+        expect(ScreenshotSupport.watermarkFontSize(for: hdCanvas, factor: 0) == 22
+                && ScreenshotSupport.watermarkFontSize(for: hdCanvas, factor: 1) == 173
+                && ScreenshotSupport.watermarkFontSize(for: CGSize(width: 20, height: 20), factor: 0) == 8,
+               "watermark text scales with the short side and keeps a legible floor")
+        expect(ScreenshotSupport.watermarkImageWidth(for: CGSize(width: 1000, height: 500), factor: 0) == 50
+                && ScreenshotSupport.watermarkImageWidth(for: CGSize(width: 1000, height: 500), factor: 1) == 500
+                && ScreenshotSupport.watermarkImageWidth(for: CGSize(width: 1000, height: 500), factor: 2) == 500,
+               "a watermark picture spans from a corner mark to half the width")
+        let markCanvas = CGSize(width: 1000, height: 600)
+        let markSize = CGSize(width: 200, height: 50)
+        let cornerMark = ScreenshotSupport.watermarkPlacement(contentSize: markSize, rotation: 0,
+                                                              anchor: .bottomTrailing, in: markCanvas)
+        expect(cornerMark?.fit == 1 && cornerMark?.center == CGPoint(x: 870, y: 545),
+               "an upright mark sits against the bottom-right margin")
+        expect(ScreenshotSupport.watermarkPlacement(contentSize: markSize, rotation: 0,
+                                                    anchor: .center, in: markCanvas)?.center
+                == CGPoint(x: 500, y: 300),
+               "a centered mark sits in the middle of the capture")
+        let turnedMark = ScreenshotSupport.watermarkPlacement(contentSize: markSize, rotation: 90,
+                                                              anchor: .topLeading, in: markCanvas)
+        expectClose(Double(turnedMark?.center.x ?? 0), 55, "a turned mark is placed by its turned width")
+        expectClose(Double(turnedMark?.center.y ?? 0), 130, "a turned mark is placed by its turned height")
+        let wideMark = ScreenshotSupport.watermarkPlacement(contentSize: CGSize(width: 2000, height: 100),
+                                                            rotation: 0, anchor: .bottomTrailing,
+                                                            in: markCanvas)
+        expectClose(Double(wideMark?.fit ?? 0), 0.47, "a mark wider than the capture shrinks to the margins")
+        expectClose(Double(wideMark?.center.x ?? 0), 500, "a shrunk mark spans the width between the margins")
+        expect(ScreenshotSupport.watermarkPlacement(contentSize: .zero, rotation: 0,
+                                                    anchor: .center, in: markCanvas) == nil
+                && ScreenshotSupport.watermarkPlacement(contentSize: markSize, rotation: .nan,
+                                                        anchor: .center, in: markCanvas) == nil,
+               "an empty or non-finite mark has no placement")
+
+        // The exporter draws the mark where the placement says, over the
+        // capture, and nothing at all while it is off.
+        func solidImage(width: Int, height: Int, gray: CGFloat) -> CGImage? {
+            let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                    bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            context?.setFillColor(CGColor(gray: gray, alpha: 1))
+            context?.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            return context?.makeImage()
+        }
+        func exportPixels(_ image: CGImage) -> [UInt8]? {
+            var data = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let drawn = data.withUnsafeMutableBytes { buffer -> Bool in
+                guard let context = CGContext(data: buffer.baseAddress, width: image.width,
+                                              height: image.height, bitsPerComponent: 8,
+                                              bytesPerRow: image.width * 4,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                else { return false }
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                return true
+            }
+            return drawn ? data : nil
+        }
+        // A bitmap's first row is its top, so memory rows read in the
+        // annotations' top-left space.
+        func channel(_ data: [UInt8], width: Int, height: Int, x: Int, y: Int, _ index: Int) -> Int {
+            Int(data[(y * width + x) * 4 + index])
+        }
+        func isWhite(_ data: [UInt8], width: Int, height: Int, x: Int, y: Int) -> Bool {
+            (0..<3).allSatisfy { channel(data, width: width, height: height, x: x, y: y, $0) == 255 }
+        }
+        func markedExport(_ watermark: ScreenshotSupport.WatermarkStyle,
+                          picture: CGImage?, base: CGImage) -> [UInt8]? {
+            ScreenshotRenderer.renderExport(baseImage: base, annotations: [], pixelated: nil,
+                                            scale: 1, annotationShadowsEnabled: false,
+                                            watermark: watermark, watermarkImage: picture,
+                                            style: ScreenshotSupport.BackdropStyle(kind: .none,
+                                                                                   cornerRadius: 0),
+                                            fill: .none, downscaleTo1x: false)
+                .flatMap { exportPixels($0.image) }
+        }
+        let markWidth = 120
+        let markHeight = 80
+        if let white = solidImage(width: markWidth, height: markHeight, gray: 1),
+           let stamp = solidImage(width: 4, height: 4, gray: 0) {
+            let untouched = markedExport(ScreenshotSupport.WatermarkStyle(), picture: nil, base: white)
+            expect(untouched.map { data in
+                (0..<markWidth).allSatisfy { x in
+                    (0..<markHeight).allSatisfy { y in
+                        isWhite(data, width: markWidth, height: markHeight, x: x, y: y)
+                    }
+                }
+            } == true, "no watermark leaves the capture untouched")
+            let textStamp = ScreenshotSupport.WatermarkStyle(kind: .text, text: "X", color: "black",
+                                                             anchor: .bottomTrailing, size: 1,
+                                                             opacity: 1)
+            let stamped = markedExport(textStamp, picture: nil, base: white)
+            expect(stamped.map { data in
+                (100..<markWidth).contains { x in
+                    (56..<markHeight).contains { y in
+                        !isWhite(data, width: markWidth, height: markHeight, x: x, y: y)
+                    }
+                }
+            } == true, "a text watermark lands in its corner of the export")
+            expect(stamped.map { data in
+                (0..<60).allSatisfy { x in
+                    (0..<40).allSatisfy { y in
+                        isWhite(data, width: markWidth, height: markHeight, x: x, y: y)
+                    }
+                }
+            } == true, "a corner text watermark leaves the opposite corner alone")
+            let pictureStamp = ScreenshotSupport.WatermarkStyle(kind: .image, imagePath: "/stamp.png",
+                                                                anchor: .topLeading, size: 1,
+                                                                opacity: 1)
+            let pictured = markedExport(pictureStamp, picture: stamp, base: white)
+            // Width factor 1 is half the capture, 60 pixels, so the picture
+            // fills the top-left 4...64 square behind the 5% margin.
+            expect(pictured.map { data in
+                channel(data, width: markWidth, height: markHeight, x: 34, y: 10, 0) < 40
+                    && channel(data, width: markWidth, height: markHeight, x: 62, y: 62, 0) < 40
+                    && isWhite(data, width: markWidth, height: markHeight, x: 66, y: 34)
+                    && isWhite(data, width: markWidth, height: markHeight, x: 34, y: 70)
+                    && isWhite(data, width: markWidth, height: markHeight, x: 100, y: 70)
+            } == true, "a picture watermark covers exactly its placed square")
+            let faded = markedExport(
+                ScreenshotSupport.WatermarkStyle(kind: .image, imagePath: "/stamp.png",
+                                                 anchor: .topLeading, size: 1, opacity: 0.5),
+                picture: stamp, base: white)
+            expect(faded.map { data in
+                let value = channel(data, width: markWidth, height: markHeight, x: 34, y: 34, 0)
+                return value > 100 && value < 160
+            } == true, "a faded watermark lets the capture through")
+            expect(markedExport(pictureStamp, picture: nil, base: white).map { data in
+                isWhite(data, width: markWidth, height: markHeight, x: 34, y: 34)
+            } == true, "a picture watermark whose file is missing draws nothing")
+        }
 
         let wordBoxes = [CGRect(x: 0, y: 0, width: 40, height: 10),
                          CGRect(x: 50, y: 0, width: 40, height: 10),
@@ -19456,8 +20163,8 @@ struct MetricsTests {
                "screenshot number shortcuts ship enabled")
         expect(Defaults.registeredDefaults[DefaultsKey.screenshotPreviewPosition] as? String == "",
                "screenshot preview placement preserves the existing automatic behavior by default")
-        expect(Defaults.registeredDefaults[DefaultsKey.screenshotPreviewTakesFocus] as? Bool == false,
-               "the screenshot preview leaves the keyboard where it was by default; taking it is the opt-in")
+        expect(Defaults.registeredDefaults[DefaultsKey.screenshotPreviewTakesFocus] as? Bool == true,
+               "the screenshot preview takes the keyboard as it appears by default, so its shortcuts work at once; leaving it is the opt-out")
         expect(Defaults.registeredDefaults[DefaultsKey.screenshotSharingEnabled] as? Bool == true,
                "temporary screenshot links preserve their existing availability by default")
         expect(Defaults.registeredDefaults[DefaultsKey.screenshotToolOrder] as? String
@@ -21603,6 +22310,7 @@ struct MetricsTests {
             DefaultsKey.mediaImageRenamePattern,
             DefaultsKey.mediaImageBackground,
             DefaultsKey.mediaImagePreserveModificationDate,
+            DefaultsKey.mediaImageSaveInSubfolder,
             DefaultsKey.mediaImageProfiles,
             DefaultsKey.mediaImageSelectedProfileID,
         ]).isSubset(of: backupKeys),
@@ -22767,8 +23475,8 @@ struct MetricsTests {
         expect(math("volume 20") == nil, "a command with a number is not a sum")
         expect(math("brilho 40") == nil, "neither is the same command in another language")
         expect(math("10/0") == nil, "dividing by zero has no answer to show")
-        expect(math("2+") == nil && math("(2+3") == nil && math("2++") == nil,
-               "an unfinished expression stays quiet")
+        expect(math("2+") == nil && math("(2+3") == "5" && math("2++") == nil,
+               "only missing closing brackets are supplied virtually")
         expect(math("2 * -3") == "-6", "a sign after an operator is read as a sign")
         expect(math(String(repeating: "(", count: 60) + "1" + String(repeating: ")", count: 60)) == nil,
                "a wall of parentheses is refused instead of eating the stack")
@@ -22790,11 +23498,51 @@ struct MetricsTests {
         expect(math("1.500+1", decimal: ",", grouping: ".") == "1,501",
                "three digits after the grouping separator read as thousands")
 
+        expect(CommandBarMath.evaluate("([2+3")?.closingBrackets == "])"
+                && CommandBarMath.evaluate("2+3")?.closingBrackets == "",
+               "virtual closers preserve bracket kind and nesting")
+        expect(mathValue("sqrt(81") == 9 && mathValue("2*(3+[4") == 14,
+               "functions and nested brackets evaluate before closers are typed")
+        for expression in ["(2+3]", "2+3)", "2*(3+", "sqrt(", "sin2", "log100(2)",
+                           "sqrt(-1)", "log(0)", "acos(2)", "1e309+0", "7=+3", "7+3=="] {
+            expect(mathValue(expression) == nil && CommandBarMath.evaluate(expression)?.closingBrackets == nil,
+                   "invalid calculator input has neither an answer nor ghost brackets: \(expression)")
+        }
+        for (expression, expected) in [
+            ("sqrt(9)+abs(-3)", 6.0), ("sin(pi/2)+cos(0)+tan(0)", 2.0),
+            ("asin(1)+acos(1)+atan(1)", Double.pi * 0.75),
+            ("ln(exp(1))+log(100)+log10(100)", 5.0),
+            ("floor(1.9)+ceil(1.1)+round(1.5)", 5.0),
+            ("2pi", 2 * Double.pi), ("π+e", Double.pi + Foundation.exp(1)),
+            ("2x3+2 x 4", 14.0), ("2(3)+(2)(3)+2[3]", 18.0), ("1e-9*1e9", 1.0),
+        ] {
+            expect(mathValue(expression).map { abs($0 - expected) < 1e-7 } ?? false,
+                   "scientific calculator evaluates \(expression)")
+        }
+        expect(mathValue("1,5e-3*2", decimal: ",", grouping: ".") == 0.003,
+               "scientific mantissas respect decimal-comma locales")
+        for expression in ["0.1+0.2", "1/3", "-2^2", "1e-9+0", "2^100"] {
+            if let result = CommandBarMath.evaluate(expression, decimalSeparator: ".", groupingSeparator: ",") {
+                let reusable = CommandBarMath.reusableExpression(for: result, decimalSeparator: ".")
+                expect(mathValue(reusable + "+0") == result.value,
+                       "reusing \(expression) preserves its stored value")
+                if result.value == 0.3 { expect(reusable == "0.3", "reuse hides binary noise") }
+                if result.value == -4 {
+                    expect(mathValue(reusable + "^2") == 16, "negative reuse preserves power precedence")
+                }
+                let comma = CommandBarMath.reusableExpression(for: result, decimalSeparator: ",")
+                expect(mathValue(comma + "+0", decimal: ",", grouping: ".") == result.value,
+                       "reused answers also round-trip in decimal-comma locales")
+            } else {
+                expect(false, "calculator produces an answer to reuse for \(expression)")
+            }
+        }
+
         // MARK: Command bar, what the person controls
 
         expect(CommandBarSource.allCases.map(\.rawValue) == [
-            "actions", "apps", "menus", "windows", "quitApps", "settingsPages", "macSettings",
-            "snippets", "clipboard", "emoji", "folders", "answers", "calculator",
+            "actions", "apps", "menus", "windows", "quitApps", "uninstallApps", "settingsPages",
+            "macSettings", "snippets", "clipboard", "emoji", "folders", "answers", "calculator",
             "selection", "links", "files", "killProcess",
         ], "source ids are stable (they persist inside the disabled list)")
         expect(CommandBarSource.actions.isAlwaysOn
@@ -23030,6 +23778,8 @@ struct MetricsTests {
                 && CommandBarPreferences.rankBias(for: .apps)
                     > CommandBarPreferences.rankBias(for: .actions),
                "apps lead commands, while a file needs a plainly better match")
+        expect(CommandBarPreferences.rankBias(for: .uninstallApps) == 0,
+               "uninstall browse entries have no source ranking boost")
 
         // MARK: The Mac's own Settings panes
         let openablePane: [String: Any] = [
@@ -23131,8 +23881,13 @@ struct MetricsTests {
         expect(CommandBarPreferences.acceptsAlias(rowID: "app.x")
                 && !CommandBarPreferences.acceptsAlias(rowID: "menu.1.Bold")
                 && !CommandBarPreferences.acceptsAlias(rowID: "window.4")
-                && !CommandBarPreferences.acceptsAlias(rowID: "clipboard.abc"),
+                && !CommandBarPreferences.acceptsAlias(rowID: "clipboard.abc")
+                && !CommandBarPreferences.acceptsAlias(rowID: "uninstall.x"),
                "only rows that are the same thing tomorrow can be named")
+        expect(!CommandBarPreferences.acceptsPin(rowID: "uninstall.x")
+                && !CommandBarPreferences.acceptsPin(rowID: "menu.1.Bold")
+                && CommandBarPreferences.acceptsPin(rowID: "app.x"),
+               "an uninstall row is offered fresh each time, so it cannot be pinned")
 
         var barPins = CommandBarPreferences.togglingPin("action.screenshot", in: [])
         barPins = CommandBarPreferences.togglingPin("app.chat", in: barPins)
@@ -23326,6 +24081,60 @@ struct MetricsTests {
                "popular emoji keep a predictable lead over the Unicode long tail")
         expect(emojiCharacters.count == CommandBarEmoji.emoji.count,
                "no emoji is offered twice")
+
+        // MARK: Skin tones
+
+        expect(CommandBarEmoji.SkinTone.allCases.count == 6
+                && CommandBarEmoji.SkinTone.none.modifier == nil
+                && CommandBarEmoji.SkinTone.allCases.dropFirst().allSatisfy {
+                    $0.modifier?.properties.isEmojiModifier == true
+                },
+               "the yellow default and the five tones Unicode defines, and nothing else")
+        expect(CommandBarEmoji.acceptsSkinTone("👍") && CommandBarEmoji.acceptsSkinTone("☝️"),
+               "a hand takes a tone whether or not it carries a presentation selector")
+        expect(!CommandBarEmoji.acceptsSkinTone("😀") && !CommandBarEmoji.acceptsSkinTone("🍕")
+                && !CommandBarEmoji.acceptsSkinTone("🤷\u{200D}♀️"),
+               "a face, an object and a sequence are all left alone")
+        expect(CommandBarEmoji.applying(.medium, to: "👍") == "👍\u{1F3FD}",
+               "a tone is the modifier appended to the emoji")
+        expect(CommandBarEmoji.applying(.medium, to: "☝️")
+                == "\u{261D}\u{1F3FD}",
+               "the presentation selector goes with the tone, which already implies it")
+        expect(CommandBarEmoji.SkinTone.allCases.allSatisfy {
+            CommandBarEmoji.applying($0, to: "☝️").count == 1
+        }, "every tone of an emoji is still one character to type and to delete")
+        expect(CommandBarEmoji.applying(.none, to: "👍") == "👍"
+                && CommandBarEmoji.applying(.dark, to: "🍕") == "🍕",
+               "the default and an emoji with no tone to give are returned untouched")
+        expect(Set(CommandBarEmoji.SkinTone.allCases.map(\.swatch)).count
+                == CommandBarEmoji.SkinTone.allCases.count,
+               "the picker shows a different hand for every tone it offers")
+        expect(CommandBarEmoji.emoji.contains { CommandBarEmoji.acceptsSkinTone($0.character) }
+                && CommandBarEmoji.emoji.contains { !CommandBarEmoji.acceptsSkinTone($0.character) },
+               "the offered set has emoji that take a tone and emoji that do not")
+        expect(CommandBarPreferences.skinTone(from: "") == CommandBarEmoji.SkinTone.none
+                && CommandBarPreferences.skinTone(from: "dark") == CommandBarEmoji.SkinTone.dark
+                && CommandBarPreferences.skinTone(from: "mauve") == CommandBarEmoji.SkinTone.none,
+               "a tone survives storage, and one this version does not know reads as the default")
+        expect(Defaults.registeredDefaults[DefaultsKey.commandBarEmojiSkinTone] as? String == "",
+               "emoji ship in the tone Unicode gives them until the person says otherwise")
+        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarEmojiSkinTone),
+               "the chosen tone is configuration, so it travels with an exported setup")
+        expect(CommandBarPreferences.emojiIdentity(
+            fromRowID: CommandBarPreferences.emojiRowID(identity: "👍")) == "👍",
+               "the emoji comes back out of the id its row is stored under")
+        expect(CommandBarEmoji.SkinTone.allCases.filter { $0 != .none }.allSatisfy {
+            CommandBarEmoji.applying($0, to: "👍") != "👍"
+        }, "every tone changes the character, so an id carrying one would move with it")
+        expect(CommandBarPreferences.emojiIdentity(fromRowID: "app.finder") == nil
+                && CommandBarPreferences.emojiIdentity(fromRowID: "emoji.") == nil,
+               "a row of another kind, and an id with no emoji left in it, answer with nothing")
+        let catalogSource = (try? String(
+            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarCatalog.swift",
+            encoding: .utf8)) ?? ""
+        expect(catalogSource.contains("CommandBarPreferences.emojiRowID(identity: emoji.identity)"),
+               "the emoji rows take their id from the seam above, not from the toned character")
+
         expect(CommandBarSearch.emojiQuery(from: "fire") == nil,
                "an ordinary search never opens the emoji index")
         expect(CommandBarSearch.emojiQuery(from: ":fire") == "fire"
@@ -23596,12 +24405,17 @@ struct MetricsTests {
         expect(RecorderSupport.outputSize(source: CGSize(width: 2940, height: 1912), quality: .high)
                 == CGSize(width: 2940, height: 1912),
                "the high preset keeps every pixel")
+        expect(RecorderSupport.outputSize(source: CGSize(width: 2940, height: 1912), quality: .balanced)
+                == CGSize(width: 2940, height: 1912),
+               "the default preset keeps every pixel too, so text stays as sharp as on screen")
         let highRate = RecorderSupport.averageBitRate(width: 2940, height: 1912, fps: 60,
                                                       quality: .high)
+        let balancedRate = RecorderSupport.averageBitRate(width: 2940, height: 1912, fps: 60,
+                                                          quality: .balanced)
         let smallRate = RecorderSupport.averageBitRate(width: 1470, height: 956, fps: 60,
                                                        quality: .small)
-        expect(highRate > smallRate,
-               "a bigger picture at a higher preset asks the encoder for more")
+        expect(highRate > balancedRate && balancedRate > smallRate,
+               "the presets differ by bits, and only the small one by pixels")
         expect(RecorderSupport.averageBitRate(width: 64, height: 64, fps: 30, quality: .small)
                 >= 800_000,
                "even a tiny area gets a usable stream")
@@ -24169,8 +24983,7 @@ struct MetricsTests {
         // The typing sampler fills an array from an NSEvent monitor callback
         // while the stop path reads it, so the append has to be under the
         // lock: an unsynchronised one races the copy-on-write buffer. The
-        // recording's start time is written by `start()` and read from that
-        // same callback, so it belongs under the lock too.
+        // recording's origin and pause state belong to its shared clock.
         let typingSampler = ((try? String(
             contentsOfFile: "Sources/Vorssaint/Services/Recorder/RecorderTypingTrack.swift",
             encoding: .utf8)) ?? "")
@@ -24178,10 +24991,8 @@ struct MetricsTests {
             .filter { !$0.isEmpty }.joined(separator: " ")
         expect(typingSampler.contains("let lock = NSLock()"),
                "the typing sampler guards its buffer the way the pointer sampler does")
-        expect(typingSampler.contains("lock.withLock { startedAt = CACurrentMediaTime() }"),
-               "the typing sampler writes the recording's start time under the lock")
         expect(typingSampler.contains(
-            "lock.withLock { guard let time = pauseClock.eventTime(now, since: startedAt) "
+            "lock.withLock { guard let time = pauseClock.eventTime(now) "
             + "else { return } times.append(time) }"
         ), "the typing sampler appends a keystroke time only under the lock")
         // `RecorderSession.stop()` is nonisolated and async, so its body runs
@@ -24788,6 +25599,13 @@ struct MetricsTests {
                 && !InstalledApps.isSystemApplication(
                     at: URL(fileURLWithPath: "/Applications/UserUtility.app")),
                "app controls never offer system apps to the uninstaller")
+        expect(InstalledApps.isInApplicationsFolder(
+                    URL(fileURLWithPath: "/Applications/UserUtility.app"))
+                && InstalledApps.isInApplicationsFolder(
+                    URL(fileURLWithPath: "/Applications/Vendor/Nested.app"))
+                && !InstalledApps.isInApplicationsFolder(
+                    URL(fileURLWithPath: "/Users/someone/Downloads/Rogue.app")),
+               "an app nested in an Applications subfolder counts as installed, same as installedApplications' own recursive walk")
 
         // MARK: Command bar search and ranking
 
@@ -26219,6 +27037,107 @@ struct MetricsTests {
                "in-app uninstall aborts unless fans and normal sleep are restored before removal")
         expect(uninstallScriptSource.contains("SleepDisabled"),
                "script uninstall reads the sleep setting back for itself")
+
+        // MARK: Secure input
+        // The Carbon flag is the authority on whether secure input is on; the
+        // registry read only answers who. A holder the session still records
+        // after the flag cleared must never produce a warning.
+        expect(SecureInputSupport.holder(isEnabled: false,
+                                         read: .noHolder,
+                                         runningApp: { _ in nil },
+                                         isProcessAlive: { _ in true }) == .off,
+               "secure input off with no recorded holder is off")
+        var secureInputNameLookups = 0
+        let secureInputOffWithPid = SecureInputSupport.holder(
+            isEnabled: false,
+            read: .holder(4242),
+            runningApp: { pid in
+                secureInputNameLookups += 1
+                return ("SomeBrowser", pid)
+            },
+            isProcessAlive: { _ in true })
+        expect(secureInputOffWithPid == .off,
+               "secure input off stays off even with a pid still recorded")
+        expect(SecureInputSupport.holder(isEnabled: false,
+                                         read: .unavailable,
+                                         runningApp: { _ in nil },
+                                         isProcessAlive: { _ in true }) == .off,
+               "secure input off stays off when the session cannot be read")
+        expect(secureInputNameLookups == 0,
+               "the name lookup is skipped when secure input is off")
+
+        // The row names the holder and the reveal button activates it, so a
+        // helper pid has to resolve to its app for both.
+        expect(SecureInputSupport.holder(isEnabled: true,
+                                         read: .holder(999),
+                                         runningApp: { pid in
+                                             pid == 999 ? ("SomeBrowser", 4242) : nil
+                                         },
+                                         isProcessAlive: { _ in true })
+                   == .app(name: "SomeBrowser", pid: 4242),
+               "a helper pid is attributed to the app responsible for it")
+        // Liveness is what separates the two unnameable holders. Only a holder
+        // that has exited leaves a flag a new login session clears; a live one
+        // is a system prompt the user is looking at, and telling them to end
+        // the session is the worst answer this row could give.
+        expect(SecureInputSupport.holder(isEnabled: true,
+                                         read: .holder(4242),
+                                         runningApp: { _ in nil },
+                                         isProcessAlive: { _ in true }) == .unknown,
+               "a running holder that is no regular app is never sent to log out")
+        expect(SecureInputSupport.holder(isEnabled: true,
+                                         read: .holder(4242),
+                                         runningApp: { _ in nil },
+                                         isProcessAlive: { _ in false }) == .unattributed,
+               "a holder that has exited is what a new login session clears")
+        expect(SecureInputSupport.holder(isEnabled: true,
+                                         read: .noHolder,
+                                         runningApp: { _ in nil },
+                                         isProcessAlive: { _ in true }) == .unattributed,
+               "secure input on with no recorded holder is unattributed")
+        expect(SecureInputSupport.holder(isEnabled: true,
+                                         read: .holder(0),
+                                         runningApp: { pid in ("SomeBrowser", pid) },
+                                         isProcessAlive: { _ in true }) == .unattributed,
+               "a zero pid is not an attribution")
+        expect(SecureInputSupport.holder(isEnabled: true,
+                                         read: .holder(4242),
+                                         runningApp: { pid in ("", pid) },
+                                         isProcessAlive: { _ in false }) == .unattributed,
+               "an empty app name is not an attribution")
+
+        // Only `.unattributed` asks the user to log out, so a read that did
+        // not work must never land there.
+        var secureInputUnavailableLookups = 0
+        var secureInputUnavailableLivenessChecks = 0
+        let secureInputUnavailable = SecureInputSupport.holder(
+            isEnabled: true,
+            read: .unavailable,
+            runningApp: { pid in
+                secureInputUnavailableLookups += 1
+                return ("SomeBrowser", pid)
+            },
+            isProcessAlive: { _ in
+                secureInputUnavailableLivenessChecks += 1
+                return true
+            })
+        expect(secureInputUnavailable == .unknown,
+               "a session that cannot be read reports an unknown holder")
+        expect(secureInputUnavailableLookups == 0 && secureInputUnavailableLivenessChecks == 0,
+               "a session that cannot be read costs no name lookup and no liveness check")
+
+        expect(!SecureInputSupport.shouldPoll(observingSurfaceCount: 0, windowIsOpen: true),
+               "secure input keeps no timer without a visible surface")
+        expect(SecureInputSupport.shouldPoll(observingSurfaceCount: 1, windowIsOpen: true)
+                   && SecureInputSupport.shouldPoll(observingSurfaceCount: 3, windowIsOpen: true),
+               "a visible surface polls secure input while the window is open")
+        expect(SecureInputSupport.shouldPoll(observingSurfaceCount: 1, windowIsOpen: true)
+                   == SecureInputSupport.shouldPoll(observingSurfaceCount: 2, windowIsOpen: true),
+               "repeating a demand does not change whether secure input polls")
+        expect(!SecureInputSupport.shouldPoll(observingSurfaceCount: 1, windowIsOpen: false),
+               "a demand left over from before the window closed does not poll on its own")
+        expect(!SecureInputSupport.shouldPoll(observingSurfaceCount: 0, windowIsOpen: false),
+               "neither gate alone is enough")
 
         // MARK: Command-Q / Command-W protection
         expect(QuitProtectionSupport.sanitizedHoldDuration(100) == 250,

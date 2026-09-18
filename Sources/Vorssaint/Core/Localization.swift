@@ -357,6 +357,7 @@ struct Strings {
     let dockPreviewName: String
     let dockPreviewEnable: String
     let dockPreviewEnableCaption: String
+    let dockPreviewCurrentSpaceOnlyCaption: String
     let dockPreviewBackgroundOpacity: String
     let dockPreviewBackgroundOpacityCaption: String
     let dockPreviewOpenDelay: String
@@ -455,6 +456,11 @@ struct Strings {
     let uninstallerCatLogs: String
     let uninstallerCatState: String
     let uninstallerCatOther: String
+    let uninstallerCommandBarBrowseTitle: String
+    let uninstallerCommandBarToggle: String
+    let uninstallerCommandBarCaption: String
+    let uninstallerCommandBarFinderTitle: String
+    let uninstallerSelectionUnavailable: String
 
     // MARK: Feature — URL cleaner
     let urlCleanerName: String
@@ -735,6 +741,13 @@ struct Strings {
     let permissionOpenSettings: String
     let permissionRequest: String
     let permissionRestartNote: String
+
+    // MARK: Secure input
+    let secureInputTitle: String
+    let secureInputHeldFormat: String
+    let secureInputUnattributed: String
+    let secureInputUnidentified: String
+    let secureInputRevealFormat: String
 
     // MARK: About
     let aboutDescription: String
@@ -1120,6 +1133,10 @@ struct Strings {
     let switcherSearchPinCaption: String
     let invertVerticalScroll: String
     let invertHorizontalScroll: String
+    let scrollHorizontalName: String
+    let scrollHorizontalModifierLabel: String
+    let scrollHorizontalCommandKey: String
+    let scrollHorizontalCaption: String
     let switcherShowShortcutHints: String
     let switcherShowShortcutHintsCaption: String
     let uninstallerHomebrewPackageFormat: String
@@ -1380,6 +1397,7 @@ extension Strings {
         dockPreviewName: "Dock Preview",
         dockPreviewEnable: "Pré-visualizar janelas no Dock",
         dockPreviewEnableCaption: "Passe o mouse em um app aberto no Dock para ver suas janelas e clique na que quiser abrir.",
+        dockPreviewCurrentSpaceOnlyCaption: "Quando desligado, mostra janelas de todas as mesas. Escolher uma janela em outra mesa leva você até ela.",
         dockPreviewBackgroundOpacity: "Fundo do painel",
         dockPreviewBackgroundOpacityCaption: "Diminua para ver mais do que está atrás do painel.",
         dockPreviewOpenDelay: "Atraso de abertura",
@@ -1475,6 +1493,11 @@ extension Strings {
         uninstallerCatLogs: "Logs",
         uninstallerCatState: "Estado salvo",
         uninstallerCatOther: "Outros",
+        uninstallerCommandBarBrowseTitle: "Desinstalar aplicativo",
+        uninstallerCommandBarToggle: "Mostrar na Barra de Comandos",
+        uninstallerCommandBarCaption: "Permite escolher e desinstalar aplicativos pela Barra de Comandos.",
+        uninstallerCommandBarFinderTitle: "Desinstalar aplicativo selecionado no Finder",
+        uninstallerSelectionUnavailable: "Selecione um aplicativo que possa ser removido no Finder ou escolha outro na lista.",
 
         urlCleanerName: "Limpar URL",
         urlCleanerEnable: "Limpar URLs ao copiar",
@@ -1742,6 +1765,11 @@ extension Strings {
         permissionOpenSettings: "Abrir Ajustes do Sistema…",
         permissionRequest: "Conceder acesso",
         permissionRestartNote: "O macOS pode pedir para reabrir o app depois de conceder.",
+        secureInputTitle: "A entrada segura está ativa",
+        secureInputHeldFormat: "%@ está mantendo-a ativa, então o Vorssaint não consegue digitar por você. Saia do campo de senha do app, ou encerre-o, para liberá-la.",
+        secureInputUnattributed: "Nenhum app em execução a reivindica. Encerre a sessão e entre novamente para limpá-la.",
+        secureInputUnidentified: "Não foi possível identificar o app que a está mantendo ativa, então o Vorssaint não consegue digitar por você.",
+        secureInputRevealFormat: "Mostrar %@",
 
         aboutDescription: "Central de utilidades para o seu Mac.\nEnergia, monitor do sistema, rolagem e alternador de janelas, direto na barra de menus.",
         versionPrefix: "Versão",
@@ -2110,6 +2138,10 @@ extension Strings {
         switcherSearchPinCaption: "S inicia uma busca e fixa o alternador aberto, assim digitar não produz mais caracteres especiais quando o atalho usa ⌥, e uma busca que comece com Q ou W não fecha a janela nem encerra o app por engano.",
         invertVerticalScroll: "Inverter rolagem vertical",
         invertHorizontalScroll: "Inverter rolagem horizontal",
+        scrollHorizontalName: "Rolar na horizontal segurando uma tecla",
+        scrollHorizontalModifierLabel: "Tecla modificadora",
+        scrollHorizontalCommandKey: "Command",
+        scrollHorizontalCaption: "Mantenha apenas a tecla escolhida pressionada para rolar a roda vertical do mouse na horizontal. Outras combinações de teclas não são alteradas.",
         switcherShowShortcutHints: "Mostrar dicas de atalhos",
         switcherShowShortcutHintsCaption: "Exibe os atalhos de apps e janelas abaixo dos ícones.",
         uninstallerHomebrewPackageFormat: "%@ também será removido do Homebrew.",
@@ -2371,6 +2403,7 @@ extension Strings {
         dockPreviewName: "Dock Preview",
         dockPreviewEnable: "Preview windows from the Dock",
         dockPreviewEnableCaption: "Hover over an open app in the Dock to see its windows, then click the one you want.",
+        dockPreviewCurrentSpaceOnlyCaption: "When off, shows windows from all desktops. Choosing a window on another desktop takes you there.",
         dockPreviewBackgroundOpacity: "Panel background",
         dockPreviewBackgroundOpacityCaption: "Turn it down to see more of what sits behind the panel.",
         dockPreviewOpenDelay: "Open delay",
@@ -2466,6 +2499,11 @@ extension Strings {
         uninstallerCatLogs: "Logs",
         uninstallerCatState: "Saved state",
         uninstallerCatOther: "Other",
+        uninstallerCommandBarBrowseTitle: "Uninstall Application",
+        uninstallerCommandBarToggle: "Show in Command Bar",
+        uninstallerCommandBarCaption: "Choose and uninstall apps in the Command Bar.",
+        uninstallerCommandBarFinderTitle: "Uninstall app selected in Finder",
+        uninstallerSelectionUnavailable: "Select an app that can be removed in Finder, or choose another from the list.",
 
         urlCleanerName: "Clean URL",
         urlCleanerEnable: "Clean URLs as you copy them",
@@ -2733,6 +2771,11 @@ extension Strings {
         permissionOpenSettings: "Open System Settings…",
         permissionRequest: "Grant access",
         permissionRestartNote: "macOS may ask to reopen the app after granting.",
+        secureInputTitle: "Secure input is on",
+        secureInputHeldFormat: "%@ is holding it, so Vorssaint cannot type for you. Dismiss its password field, or quit it, to release it.",
+        secureInputUnattributed: "No running app claims it. Log out and back in to clear it.",
+        secureInputUnidentified: "The app holding it could not be identified, so Vorssaint cannot type for you.",
+        secureInputRevealFormat: "Show %@",
 
         aboutDescription: "A utility hub for your Mac.\nEnergy, system monitor, scrolling and a window switcher, right in the menu bar.",
         versionPrefix: "Version",
@@ -3101,6 +3144,10 @@ extension Strings {
         switcherSearchPinCaption: "S starts a search and pins the switcher open, so typing no longer produces special characters when your shortcut uses ⌥, and a search starting with Q or W no longer closes the window or quits the app by mistake.",
         invertVerticalScroll: "Invert vertical scrolling",
         invertHorizontalScroll: "Invert horizontal scrolling",
+        scrollHorizontalName: "Scroll sideways while holding a key",
+        scrollHorizontalModifierLabel: "Modifier key",
+        scrollHorizontalCommandKey: "Command",
+        scrollHorizontalCaption: "Hold only the selected modifier to scroll the vertical mouse wheel horizontally. Other key combinations are unchanged.",
         switcherShowShortcutHints: "Show shortcut hints",
         switcherShowShortcutHintsCaption: "Shows the app and window shortcuts below the icons.",
         uninstallerHomebrewPackageFormat: "%@ will also be removed from Homebrew.",
