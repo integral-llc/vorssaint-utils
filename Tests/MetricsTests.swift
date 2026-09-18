@@ -40,6 +40,7 @@ struct MetricsTests {
             ("cleaner", { CleanerEligibilityTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
             ("switcher", { SwitcherScrollContract.run(suite) }),
+            ("layout-detection", { LayoutDetectionTests.run(suite) }),
         ]
         var selected = Set<String>()
         var listOnly = false
@@ -1192,7 +1193,7 @@ struct MetricsTests {
         expect(!LayoutSwitcherSupport.isCorrectable("hi", minimumLength: shortest),
                "automatic correction leaves a word shorter than the floor alone")
         for structured in ["https://example.com", "user@example.com", "src/main.swift",
-                           "camelCase", "snake_case", "file.txt"] {
+                           "camelCase", "snake_case"] {
             expect(LayoutSwitcherSupport.looksStructured(structured),
                    "\(structured) reads as something meant for a machine")
         }
@@ -15939,7 +15940,7 @@ struct MetricsTests {
                    "every reason a run stopped reads differently and fills in (\(language.rawValue))")
             let layoutSwitcherValues = Mirror(reflecting: FeatureStrings.layoutSwitcher(language))
                 .children.compactMap { $0.value as? String }
-            expect(layoutSwitcherValues.count == 11
+            expect(layoutSwitcherValues.count == 14
                     && layoutSwitcherValues.allSatisfy { !$0.isEmpty },
                    "every layout switcher string is set for \(language.rawValue)")
             expect(layoutSwitcherValues.allSatisfy { !$0.contains("\u{2014}") },

@@ -235,6 +235,9 @@ enum DefaultsKey {
     static let layoutSwitcherMinimumWordLength = "layoutSwitcherMinimumWordLength"
     static let layoutSwitcherAutomatic = "layoutSwitcherAutomatic" // correct a finished word unasked
     static let layoutSwitcherShortcut = "layoutSwitcherShortcut"   // GlobalShortcut storage value
+    // Learned words. Deliberately unregistered and absent from the backup's
+    // key lists: typed text stays on the Mac it was typed on.
+    static let layoutSwitcherVocabulary = "layoutSwitcherVocabulary"
     static let panelControlLayoutSwitcher = "panelControlLayoutSwitcher"
     static let transcriberLocation = "transcriberLocation"       // TranscriptionLocation.rawValue
     static let transcriberRemoteHost = "transcriberRemoteHost"   // host of a whisper.cpp server

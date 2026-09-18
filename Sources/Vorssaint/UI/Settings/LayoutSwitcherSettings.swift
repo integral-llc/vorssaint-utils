@@ -12,6 +12,10 @@ struct LayoutSwitcherSettings: View {
     @AppStorage(DefaultsKey.layoutSwitcherMinimumWordLength) private var minimumLength =
         Defaults.defaultLayoutSwitcherWordLength
 
+    /// The button's only feedback: nothing else on the page changes when the
+    /// words go. Reopening the page offers it again.
+    @State private var learnedForgotten = false
+
     private var text: LayoutSwitcherStrings { FeatureStrings.layoutSwitcher(l10n.language) }
 
     var body: some View {
@@ -74,6 +78,17 @@ struct LayoutSwitcherSettings: View {
                     .foregroundStyle(.secondary)
             }
             .disabled(!enabled)
+
+            Section {
+                Button(learnedForgotten ? text.learnedForgotten : text.forgetLearned) {
+                    LayoutSwitcherService.shared.forgetLearnedWords()
+                    learnedForgotten = true
+                }
+                .disabled(learnedForgotten)
+                Text(text.forgetLearnedCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if enabled, !permissions.accessibility {
                 Section(l10n.s.permissionRequired) {

@@ -39,6 +39,34 @@ enum CommandBarSelectionReader {
         return trimmed.count <= maximumLength ? trimmed : ""
     }
 
+    /// The `length` UTF-16 units of text that end at the caret, or nil when
+    /// there is a selection, not that much text, or an app that does not say.
+    /// Blocking, on the same short leash as the selection.
+    ///
+    /// The layout switcher asks this after Return, to tell a new line in a
+    /// document from a message that was just sent: nil has to mean "do not
+    /// touch the text", so every doubt ends in nil.
+    static func readTextBeforeCaret(length: Int) -> String? {
+        guard length > 0, AXIsProcessTrusted(),
+              let front = NSWorkspace.shared.frontmostApplication,
+              front.bundleIdentifier != Bundle.main.bundleIdentifier else { return nil }
+        let app = AXUIElementCreateApplication(front.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.35)
+        guard let focused = copyElement(app, kAXFocusedUIElementAttribute),
+              let rawSelection = copyValue(focused, kAXSelectedTextRangeAttribute),
+              CFGetTypeID(rawSelection) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue(rawSelection as! AXValue, .cfRange, &selection),
+              selection.length == 0, selection.location >= length else { return nil }
+        var wanted = CFRange(location: selection.location - length, length: length)
+        guard let parameter = AXValueCreate(.cfRange, &wanted) else { return nil }
+        var text: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            focused, kAXStringForRangeParameterizedAttribute as CFString, parameter, &text) == .success
+        else { return nil }
+        return text as? String
+    }
+
     // MARK: - Accessibility reading
 
     private static func copyElement(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {

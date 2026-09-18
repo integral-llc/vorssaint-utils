@@ -15,6 +15,9 @@ struct LayoutSwitcherStrings {
     let minimumLength: String
     let minimumLengthCaption: String
     let activeNow: String
+    let forgetLearned: String
+    let forgetLearnedCaption: String
+    let learnedForgotten: String
 }
 
 extension FeatureStrings {
@@ -49,7 +52,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Retypes a finished word on its own. Leave it off to correct only when you ask.",
         minimumLength: "Shortest word to correct",
         minimumLengthCaption: "Automatic correction skips anything shorter.",
-        activeNow: "Watching for typing"
+        activeNow: "Watching for typing",
+        forgetLearned: "Forget learned words",
+        forgetLearnedCaption: "Correcting as you type remembers ordinary words you type often and corrections you took back. They stay on this Mac and are left out of exported settings. Nothing with a digit or a symbol in it is kept.",
+        learnedForgotten: "Forgotten"
     )
 
     static let ptBR = LayoutSwitcherStrings(
@@ -63,7 +69,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Redigita sozinho uma palavra terminada. Deixe desligado para corrigir só quando você pedir.",
         minimumLength: "Menor palavra a corrigir",
         minimumLengthCaption: "A correção automática ignora as mais curtas.",
-        activeNow: "Acompanhando a digitação"
+        activeNow: "Acompanhando a digitação",
+        forgetLearned: "Esquecer palavras aprendidas",
+        forgetLearnedCaption: "A correção ao digitar lembra as palavras comuns que você digita com frequência e as correções que você desfez. Elas ficam neste Mac e não entram nos ajustes exportados. Nada com dígito ou símbolo é guardado.",
+        learnedForgotten: "Esquecido"
     )
 
     static let tr = LayoutSwitcherStrings(
@@ -77,7 +86,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Biten bir kelimeyi kendiliğinden yeniden yazar. Yalnızca istediğinizde düzeltmesi için kapalı bırakın.",
         minimumLength: "Düzeltilecek en kısa kelime",
         minimumLengthCaption: "Otomatik düzeltme daha kısalarını atlar.",
-        activeNow: "Yazımı izliyor"
+        activeNow: "Yazımı izliyor",
+        forgetLearned: "Öğrenilen kelimeleri unut",
+        forgetLearnedCaption: "Yazarken düzeltme, sık yazdığınız sıradan kelimeleri ve geri aldığınız düzeltmeleri hatırlar. Bunlar bu Mac’te kalır ve dışa aktarılan ayarlara girmez. İçinde rakam veya sembol olan hiçbir şey saklanmaz.",
+        learnedForgotten: "Unutuldu"
     )
 
     static let ru = LayoutSwitcherStrings(
@@ -91,7 +103,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Перенабирает законченное слово само. Оставьте выключенным, чтобы исправлять только по запросу.",
         minimumLength: "Минимальная длина слова",
         minimumLengthCaption: "Автоматическое исправление пропускает более короткие.",
-        activeNow: "Следит за набором"
+        activeNow: "Следит за набором",
+        forgetLearned: "Забыть выученные слова",
+        forgetLearnedCaption: "Исправление при наборе запоминает обычные слова, которые вы часто набираете, и исправления, которые вы отменили. Они остаются на этом Mac и не попадают в экспортированные настройки. Ничего с цифрой или символом не сохраняется.",
+        learnedForgotten: "Забыто"
     )
 
     static let es = LayoutSwitcherStrings(
@@ -105,7 +120,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Vuelve a escribir sola una palabra terminada. Déjalo desactivado para corregir solo cuando lo pidas.",
         minimumLength: "Palabra más corta que corregir",
         minimumLengthCaption: "La corrección automática omite las más cortas.",
-        activeNow: "Atento a lo que escribes"
+        activeNow: "Atento a lo que escribes",
+        forgetLearned: "Olvidar las palabras aprendidas",
+        forgetLearnedCaption: "La corrección al escribir recuerda las palabras corrientes que escribes a menudo y las correcciones que deshiciste. Se quedan en este Mac y no entran en los ajustes exportados. No se guarda nada que lleve un dígito o un símbolo.",
+        learnedForgotten: "Olvidado"
     )
 
     static let de = LayoutSwitcherStrings(
@@ -119,7 +137,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Tippt ein fertiges Wort von selbst neu. Ausgeschaltet wird nur auf Anfrage korrigiert.",
         minimumLength: "Kürzestes Wort zum Korrigieren",
         minimumLengthCaption: "Die automatische Korrektur überspringt kürzere Wörter.",
-        activeNow: "Achtet auf Eingaben"
+        activeNow: "Achtet auf Eingaben",
+        forgetLearned: "Gelernte Wörter vergessen",
+        forgetLearnedCaption: "Die Korrektur beim Tippen merkt sich gewöhnliche Wörter, die du oft tippst, und Korrekturen, die du zurückgenommen hast. Sie bleiben auf diesem Mac und fehlen in exportierten Einstellungen. Nichts mit einer Ziffer oder einem Symbol wird behalten.",
+        learnedForgotten: "Vergessen"
     )
 
     static let fr = LayoutSwitcherStrings(
@@ -133,7 +154,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Retape un mot terminé tout seul. Laissez désactivé pour ne corriger qu’à la demande.",
         minimumLength: "Mot le plus court à corriger",
         minimumLengthCaption: "La correction automatique ignore les mots plus courts.",
-        activeNow: "Surveille la saisie"
+        activeNow: "Surveille la saisie",
+        forgetLearned: "Oublier les mots appris",
+        forgetLearnedCaption: "La correction pendant la saisie retient les mots courants que vous tapez souvent et les corrections que vous avez annulées. Ils restent sur ce Mac et ne figurent pas dans les réglages exportés. Rien qui contienne un chiffre ou un symbole n’est conservé.",
+        learnedForgotten: "Oublié"
     )
 
     static let it = LayoutSwitcherStrings(
@@ -147,7 +171,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "Riscrive da sola una parola finita. Lasciala disattivata per correggere solo su richiesta.",
         minimumLength: "Parola più corta da correggere",
         minimumLengthCaption: "La correzione automatica salta quelle più corte.",
-        activeNow: "In ascolto della digitazione"
+        activeNow: "In ascolto della digitazione",
+        forgetLearned: "Dimentica le parole imparate",
+        forgetLearnedCaption: "La correzione durante la digitazione ricorda le parole comuni che digiti spesso e le correzioni che hai annullato. Restano su questo Mac e non entrano nelle impostazioni esportate. Niente che contenga una cifra o un simbolo viene conservato.",
+        learnedForgotten: "Dimenticato"
     )
 
     static let ja = LayoutSwitcherStrings(
@@ -161,7 +188,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "打ち終わった単語をひとりでに打ち直します。必要なときだけ直すならオフのままに。",
         minimumLength: "直す最短の単語",
         minimumLengthCaption: "自動修正はこれより短い単語を飛ばします。",
-        activeNow: "入力を見ています"
+        activeNow: "入力を見ています",
+        forgetLearned: "学習した単語を忘れる",
+        forgetLearnedCaption: "入力中の修正は、よく入力する通常の単語と、取り消した修正を覚えます。これらはこのMacにだけ残り、書き出した設定には含まれません。数字や記号を含むものは保存されません。",
+        learnedForgotten: "忘れました"
     )
 
     static let ko = LayoutSwitcherStrings(
@@ -175,7 +205,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "끝난 단어를 스스로 다시 입력합니다. 요청할 때만 고치려면 꺼 두세요.",
         minimumLength: "고칠 가장 짧은 단어",
         minimumLengthCaption: "자동 교정은 이보다 짧은 단어를 건너뜁니다.",
-        activeNow: "입력을 지켜보는 중"
+        activeNow: "입력을 지켜보는 중",
+        forgetLearned: "학습한 단어 지우기",
+        forgetLearnedCaption: "입력 중 교정은 자주 입력하는 일반 단어와 되돌린 교정을 기억합니다. 이 Mac에만 남으며 내보낸 설정에는 포함되지 않습니다. 숫자나 기호가 들어간 것은 저장하지 않습니다.",
+        learnedForgotten: "지웠습니다"
     )
 
     static let zhHans = LayoutSwitcherStrings(
@@ -189,7 +222,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "自动重新输入打完的单词。保持关闭则只在你要求时纠正。",
         minimumLength: "纠正的最短单词",
         minimumLengthCaption: "自动纠正会跳过更短的单词。",
-        activeNow: "正在留意输入"
+        activeNow: "正在留意输入",
+        forgetLearned: "忘记已学习的词",
+        forgetLearnedCaption: "输入时更正会记住你常输入的普通词语和你撤回的更正。它们只留在这台 Mac 上，不会进入导出的设置。带数字或符号的内容不会保存。",
+        learnedForgotten: "已忘记"
     )
 
     static let zhTW = LayoutSwitcherStrings(
@@ -203,7 +239,10 @@ extension LayoutSwitcherStrings {
         automaticCaption: "自動重新輸入打完的字詞。保持關閉則只在你要求時修正。",
         minimumLength: "要修正的最短字詞",
         minimumLengthCaption: "自動修正會略過更短的字詞。",
-        activeNow: "正在留意輸入"
+        activeNow: "正在留意輸入",
+        forgetLearned: "忘記已學習的詞",
+        forgetLearnedCaption: "輸入時更正會記住你常輸入的一般詞語和你取消的更正。它們只留在這部 Mac 上，不會進入輸出的設定。含有數字或符號的內容不會儲存。",
+        learnedForgotten: "已忘記"
     )
 
     static let zhHK = LayoutSwitcherStrings(
@@ -217,6 +256,9 @@ extension LayoutSwitcherStrings {
         automaticCaption: "自動重新輸入打完的字詞。保持關閉就只在你要求時修正。",
         minimumLength: "要修正的最短字詞",
         minimumLengthCaption: "自動修正會略過更短的字詞。",
-        activeNow: "正在留意輸入"
+        activeNow: "正在留意輸入",
+        forgetLearned: "忘記已學習的字詞",
+        forgetLearnedCaption: "輸入時更正會記住你常輸入的一般字詞和你取消的更正。它們只留在這部 Mac 上，不會進入匯出的設定。含有數字或符號的內容不會儲存。",
+        learnedForgotten: "已忘記"
     )
 }

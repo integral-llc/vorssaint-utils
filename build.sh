@@ -474,6 +474,12 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Update/UpdateShowcaseMedia.swift
         Sources/Vorssaint/Core/KeyboardLayoutGlyph.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutSwitcherSupport.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/CharacterNGramModel.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutLanguageEvidence.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutDecisionScorer.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutTokenJudgement.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutSentenceContext.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutVocabulary.swift
         Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
         Sources/Vorssaint/Services/YouTubeTranscriber/YouTubeTranscriberSupport.swift
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
@@ -738,6 +744,18 @@ if [[ -d Resources/Images ]]; then
     mkdir -p "$STAGE/Contents/Resources/Images"
     cp Resources/Images/* "$STAGE/Contents/Resources/Images/"
 fi
+# Word lists and character models behind the layout switcher's automatic mode.
+# Without them it judges nothing and corrects nothing, so a missing copy is a
+# build error rather than a feature that quietly does nothing.
+# The README travels with them: it carries the attribution the data's licence
+# asks to be kept with every copy.
+if [[ ! -f Resources/LayoutSwitcher/en_words.txt || ! -f Resources/LayoutSwitcher/en_charmodel.dat ]]; then
+    echo "✗ Resources/LayoutSwitcher is missing its word lists or character models" >&2
+    exit 1
+fi
+mkdir -p "$STAGE/Contents/Resources/LayoutSwitcher"
+cp Resources/LayoutSwitcher/*_words.txt Resources/LayoutSwitcher/*_charmodel.dat \
+    Resources/LayoutSwitcher/README.md "$STAGE/Contents/Resources/LayoutSwitcher/"
 xattr -c -r "$STAGE" 2>/dev/null || true
 
 # Signing, in order of preference:
