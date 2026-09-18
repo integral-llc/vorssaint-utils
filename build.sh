@@ -555,23 +555,29 @@ fi
 
 echo "▸ Compiling ($BUILD_CONFIGURATION) against $(basename "$SDK")…"
 APP_SOURCES=(Sources/Vorssaint/**/*.swift)
+# One compiler process per file, one at a time, is what swiftc does when it is
+# handed 500 files and nothing else: each process loads the whole module to
+# compile its one file, and eleven cores watch. Batch mode shares that load
+# across a job per core. It needs the file map: without one the batches write
+# their objects to a temporary directory that is gone by the time the linker
+# asks for them.
+APP_OBJECT_DIR="build/objects/$EXECUTABLE"
 if (( DEV )); then
-    APP_OBJECT_DIR="build/objects/$EXECUTABLE"
-    mkdir -p build "$APP_OBJECT_DIR"
-    APP_OUTPUT_FILE_MAP="$APP_OBJECT_DIR/output-file-map.json"
-    write_swift_output_file_map "$APP_OUTPUT_FILE_MAP" "$APP_OBJECT_DIR" "${APP_SOURCES[@]}"
-    swiftc "${APP_OPTIMIZATION_FLAGS[@]}" -incremental -j "$(sysctl -n hw.logicalcpu)" \
-        -output-file-map "$APP_OUTPUT_FILE_MAP" \
-        -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${HID_EVENT_SYSTEM_FLAGS[@]}" \
-        "${BUILD_VARIANT_FLAGS[@]}" \
-        "${APP_SOURCES[@]}" -o "build/$EXECUTABLE"
+    APP_SCHEDULING_FLAGS=(-incremental)
 else
+    # A build that ships starts from nothing, so no object from an earlier
+    # tree can end up in it.
     rm -rf build
-    mkdir -p build
-    swiftc "${APP_OPTIMIZATION_FLAGS[@]}" -target "$TARGET" -sdk "$SDK" \
-        "${SDK_COMPAT_FLAGS[@]}" "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${HID_EVENT_SYSTEM_FLAGS[@]}" "${BUILD_VARIANT_FLAGS[@]}" \
-        "${APP_SOURCES[@]}" -o "build/$EXECUTABLE"
+    APP_SCHEDULING_FLAGS=(-enable-batch-mode)
 fi
+mkdir -p build "$APP_OBJECT_DIR"
+APP_OUTPUT_FILE_MAP="$APP_OBJECT_DIR/output-file-map.json"
+write_swift_output_file_map "$APP_OUTPUT_FILE_MAP" "$APP_OBJECT_DIR" "${APP_SOURCES[@]}"
+swiftc "${APP_OPTIMIZATION_FLAGS[@]}" "${APP_SCHEDULING_FLAGS[@]}" -j "$(sysctl -n hw.logicalcpu)" \
+    -output-file-map "$APP_OUTPUT_FILE_MAP" \
+    -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${HID_EVENT_SYSTEM_FLAGS[@]}" \
+    "${BUILD_VARIANT_FLAGS[@]}" \
+    "${APP_SOURCES[@]}" -o "build/$EXECUTABLE"
 
 echo "▸ Compiling protected fan helper…"
 swiftc -O -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" "${BUILD_VARIANT_FLAGS[@]}" \
