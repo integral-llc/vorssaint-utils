@@ -968,6 +968,21 @@ enum NotchMotion {
 /// Free room on both sides of the camera, in Cocoa screen coordinates.
 /// Unknown/occupied camera space is distinct from a known zero-width wing.
 enum NotchMenuBarLayout {
+    /// Accessibility places menus only where the active menu bar draws them.
+    /// When every display has a menu bar, the others repeat the same menus
+    /// from their own left edge, in one run: only a real camera makes them jump.
+    static func menus(_ menus: [CGRect], in bar: CGRect, screens: [CGRect], onEveryDisplay: Bool) -> [CGRect]? {
+        if menus.contains(where: { $0.intersects(bar) }) { return menus }
+        let ordered = menus.sorted { $0.minX < $1.minX }
+        guard onEveryDisplay, let first = ordered.first,
+              let source = screens.first(where: { $0.contains(CGPoint(x: first.midX, y: first.midY)) }) else { return nil }
+        var x = bar.minX + first.minX - source.minX
+        return ordered.map { menu in
+            defer { x += menu.width }
+            return CGRect(x: x, y: bar.minY, width: menu.width, height: bar.height)
+        }
+    }
+
     static func sideRoom(screen: CGRect, cameraWidth: CGFloat, barHeight: CGFloat,
                          occupied: [CGRect]) -> CGFloat? {
         let bar = CGRect(x: screen.minX, y: screen.maxY - barHeight, width: screen.width, height: barHeight)

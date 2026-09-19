@@ -8,7 +8,7 @@ import ApplicationServices
 /// Run off-main. Missing geometry fails closed rather than covering a menu.
 enum NotchMenuBarSpace {
     static func measure(pid: pid_t, geometry: NotchGeometry, primaryTop: CGFloat,
-                        ownWindow: Int) -> CGFloat? {
+                        ownWindow: Int, screens: [CGRect], menuBarOnEveryDisplay: Bool) -> CGFloat? {
         guard AXIsProcessTrusted() else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.15)
@@ -19,15 +19,16 @@ enum NotchMenuBarSpace {
               CFGetTypeID(rawItems) == CFArrayGetTypeID(),
               let items = rawItems as? [AXUIElement], !items.isEmpty, items.count <= 64 else { return nil }
         let deadline = Date().addingTimeInterval(0.25)
-        var occupied: [CGRect] = []
+        var menus: [CGRect] = []
         for item in items {
             guard Date() < deadline, let rect = frame(item, primaryTop: primaryTop) else { return nil }
-            occupied.append(rect)
+            menus.append(rect)
         }
         let bar = CGRect(x: geometry.screen.minX, y: geometry.screen.maxY - geometry.menuBarHeight,
                          width: geometry.screen.width, height: geometry.menuBarHeight)
         // AX may describe only a different display's active menu bar.
-        guard occupied.contains(where: { $0.intersects(bar) }) else { return nil }
+        guard var occupied = NotchMenuBarLayout.menus(menus, in: bar, screens: screens,
+                                                      onEveryDisplay: menuBarOnEveryDisplay) else { return nil }
         guard let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else { return nil }
         for window in windows {
             guard let number = window[kCGWindowNumber as String] as? Int, number != ownWindow,

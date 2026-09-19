@@ -260,6 +260,7 @@ enum NotchTests {
         NotchKeyboardLightTests.run(expect: expect)
         NotchActivityTests.run(expect: expect)
         NotchDateTests.run(expect: expect)
+        NotchMenuBarMirrorTests.run(expect: expect)
         NotchMusicExtrasTests.run(expect: expect)
         let suite = "com.vorssaint.tests.notch"
         let defaults = UserDefaults(suiteName: suite)!
