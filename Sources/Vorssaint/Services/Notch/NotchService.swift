@@ -96,6 +96,7 @@ final class NotchService: ObservableObject {
     private var session = NotchSessionState()
     private var suspended: Bool { !session.canPresent }
     private var settingsSignature = ""
+    private var restingTextMeasurement: (key: String, text: NotchRestingText)?
     private var gesture = NotchGestureSupport()
     private var volumeBaseline: Double?
     private var muteBaseline: Bool?
@@ -1112,7 +1113,7 @@ final class NotchService: ObservableObject {
             return
         }
         let wanted = running && !suspended && !hiddenUntilHover && !expanded && captureControls == nil
-            && (idleContent != .none || compactActivity != nil || !geometry.isNotched)
+            && (idleContent != .none || geometry.restingText != nil || compactActivity != nil || !geometry.isNotched)
         guard wanted else { stopMenuSpaceMonitoring(); return }
         guard menuSpaceTimer == nil else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.readMenuSpace() }
@@ -1183,6 +1184,36 @@ final class NotchService: ObservableObject {
         }
     }
 
+    /// Every preference change passes through here, so the names of a format
+    /// are measured once and again only when what decides their width changes.
+    private func restingText() -> NotchRestingText? {
+        guard NotchSupport.showsIdleDate() else { return nil }
+        let format = NotchDateFormat.stored()
+        let calendar = Calendar.autoupdatingCurrent
+        let besideBattery = NotchSupport.idleContent() == .battery
+        let key = [format, L10n.shared.language.rawValue, "\(calendar.identifier)", String(besideBattery)].joined(separator: "\n")
+        if let restingTextMeasurement, restingTextMeasurement.key == key { return restingTextMeasurement.text }
+        func measure(_ size: CGFloat) -> (String) -> CGFloat {
+            let font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
+            return { ($0 as NSString).size(withAttributes: [.font: font]).width }
+        }
+        let pattern = NotchDatePattern(format)
+        let locale = Locale(identifier: L10n.shared.language.rawValue)
+        let date = pattern.widestWhole(calendar: calendar, locale: locale, measure: measure(NotchLayout.restingTextSize))
+        let text: NotchRestingText
+        if besideBattery {
+            // The symbol keeps the leading wing, so the charge and the whole date share the other.
+            let beside = measure(NotchLayout.restingValueSize)("100%").rounded(.up) + NotchLayout.restingItemGap + date
+            text = NotchRestingText(wing: beside, row: NotchLayout.restingSymbolWidth + NotchLayout.restingItemGap + beside, date: date)
+        } else {
+            text = NotchRestingText(wing: pattern.widestHalf(calendar: calendar, locale: locale,
+                                                             measure: measure(NotchLayout.restingTextSize)),
+                                    row: date, date: date)
+        }
+        restingTextMeasurement = (key, text)
+        return text
+    }
+
     private func updateScreen() {
         let screens = NSScreen.screens
         menuBarMeasurements.retainDisplays(screens.map(\.notchDisplayID))
@@ -1209,6 +1240,7 @@ final class NotchService: ObservableObject {
                                  customHeight: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomHeight))
         if next.hasSameMenuBar(as: geometry) { next.compactSideRoom = geometry.compactSideRoom }
         next.quickAccessBottomInset = NotchQuickAccessConfiguration.current().hasBottom ? NotchQuickAccessLayout.gutter : 0
+        next.restingText = restingText()
         if next != geometry { menuSpaceGeneration += 1; geometry = next }
         if windowHost == nil {
             windowHost = NotchWindowHost(content: AnyView(NotchView(service: self)), geometry: geometry, size: surfaceSize,
@@ -1248,6 +1280,8 @@ final class NotchService: ObservableObject {
             // AppStorage can notify during a view update; defer any window work.
             DispatchQueue.main.async { self?.syncWithPreferences() }
         }
+        // A different system calendar or region renames what the resting date shows.
+        observe(.default, NSLocale.currentLocaleDidChangeNotification) { [weak self] in self?.syncWithPreferences() }
         observe(.default, .menuPanelWillShow) { [weak self] in self?.collapse() }
         session.onConsole = SessionActivity.shared.isActive
         session.locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false

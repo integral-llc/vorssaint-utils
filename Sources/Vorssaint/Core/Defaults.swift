@@ -687,6 +687,8 @@ enum DefaultsKey {
     // Optional top-of-screen workspace and activity presentations.
     static let notchShowPlayingMusic = "notchShowPlayingMusic"
     static let notchIdleContent = "notchIdleContent"
+    static let notchIdleShowsDate = "notchIdleShowsDate"
+    static let notchIdleDateFormat = "notchIdleDateFormat"
     static let notchHiddenControls = "notchHiddenControls"
     static let notchControlOrder = "notchControlOrder"
     static let notchSize = "notchSize"
@@ -1162,6 +1164,8 @@ enum Defaults {
         DefaultsKey.snippetSoundName: defaultSnippetSoundName,
         DefaultsKey.notchShowPlayingMusic: true,
         DefaultsKey.notchIdleContent: NotchIdleContent.music.rawValue,
+        DefaultsKey.notchIdleShowsDate: false,
+        DefaultsKey.notchIdleDateFormat: NotchDateFormat.defaultPattern,
         DefaultsKey.notchHiddenControls: NotchControlItem.defaultHidden,
         DefaultsKey.notchControlOrder: "",
         DefaultsKey.notchSize: NotchSize.spacious.rawValue,

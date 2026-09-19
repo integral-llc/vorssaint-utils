@@ -42,6 +42,14 @@ struct NotchMusicStrip: View {
         return max(0, min(ideal, geometry.compactActivityWingWidth - barsWidth - 8))
     }
 
+    /// The resting date rides along after the bars whenever the wing has room
+    /// for both; the track never gives anything up for it.
+    private var showsDate: Bool {
+        guard let date = geometry.restingText?.date, date.isFinite, geometry.compactActivityWingWidth >= 44 else { return false }
+        return 8 + barsWidth + NotchLayout.restingItemGap + date.rounded(.up) + NotchLayout.restingTextOuterInset
+            <= geometry.compactActivityWingWidth
+    }
+
     private var title: String { music.playback?.track.title ?? FeatureStrings.radialMenu(l10n.language).mediaNowPlaying }
     private var artist: String? {
         guard let artist = music.playback?.track.artist?.trimmingCharacters(in: .whitespaces), !artist.isEmpty else { return nil }
@@ -91,9 +99,10 @@ struct NotchMusicStrip: View {
                                                height: barHeight,
                                                tint: music.artworkTint?.color ?? .white)
                     }
+                    if showsDate { NotchRestingDateText(part: .whole).foregroundStyle(.white.opacity(0.9)) }
                 }
                 .padding(.leading, 8)
-                .padding(.trailing, barsInset)
+                .padding(.trailing, showsDate ? NotchLayout.restingTextOuterInset : barsInset)
                 .frame(width: geometry.compactActivityWingWidth, alignment: .trailing)
             }
             .frame(height: geometry.compactActivityContentHeight)

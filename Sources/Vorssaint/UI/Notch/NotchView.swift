@@ -97,7 +97,9 @@ struct NotchView: View {
 
     private var compact: some View {
         HStack(spacing: 0) {
-            if service.idleContent != .none, service.geometry.restingWingWidth > 0 {
+            if service.geometry.restingText != nil {
+                NotchRestingDateView(service: service)
+            } else if service.idleContent != .none, service.geometry.restingWingWidth > 0 {
                 Group {
                     switch service.idleContent {
                     case .music:

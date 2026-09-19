@@ -109,6 +109,13 @@ enum NotchLayout {
     static var chromeHeight: CGFloat { headerHeight + spacing + bottomInset }
     /// Breathing room every compact strip keeps from its silhouette.
     static let compactEdgeGap: CGFloat = 5
+    static let restingTextSize: CGFloat = 10
+    /// The outer end of a wing curves into the menu bar; the camera end is straight.
+    static let restingTextOuterInset: CGFloat = 14
+    static let restingTextInnerInset: CGFloat = 6
+    static let restingValueSize: CGFloat = 9
+    static let restingSymbolWidth: CGFloat = 24
+    static let restingItemGap: CGFloat = 8
     /// Bottom corner `NotchShape` draws for a surface of this height.
     static func surfaceRadius(height: CGFloat) -> CGFloat { min(28, height / 2) }
 }
@@ -523,6 +530,10 @@ enum NotchSupport {
         return choice
     }
 
+    static func showsIdleDate(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: DefaultsKey.notchIdleShowsDate)
+    }
+
     static func visibleIdleContent(isPlaying: Bool, in defaults: UserDefaults = .standard) -> NotchIdleContent {
         let choice = idleContent(in: defaults)
         return choice == .music && !showsMusicActivity(isPlaying: isPlaying, in: defaults) ? .none : choice
@@ -658,6 +669,16 @@ struct NotchMenuBarMeasurements {
     }
 }
 
+/// Widest forms of the resting date, so a new day never resizes the island.
+struct NotchRestingText: Equatable {
+    /// One wing beside a real camera.
+    let wing: CGFloat
+    /// Everything at rest in a single row, where no camera divides it.
+    let row: CGFloat
+    /// The date alone, for a strip that has room to spare.
+    let date: CGFloat
+}
+
 /// Screen coordinates stay in points, including displays to the left or above
 /// the primary display. No model name or pixel density is assumed.
 struct NotchGeometry: Equatable {
@@ -670,6 +691,8 @@ struct NotchGeometry: Equatable {
     let customHeight: CGFloat
     let menuBarHeight: CGFloat
     var compactSideRoom: CGFloat?
+    /// Set while the resting island shows the date. Nil while it holds symbols alone.
+    var restingText: NotchRestingText?
     var quickAccessBottomInset: CGFloat = 0
     private var allowsActivityFooter = true
     private var minimumCompactWidth: CGFloat = 0
@@ -702,15 +725,34 @@ struct NotchGeometry: Equatable {
         return CGRect(x: (size.width - width) / 2, y: 0, width: width, height: height)
     }
 
+    private var usableRestingText: NotchRestingText? {
+        guard let text = restingText, [text.wing, text.row, text.date].allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        return text
+    }
+    private var restingRoom: CGFloat { max(0, compactSideRoom ?? 0).rounded(.down) }
     var restingWingWidth: CGFloat {
-        let available = min(44, max(0, compactSideRoom ?? 0)).rounded(.down)
-        return available >= 44 ? available : 0
+        var wanted: CGFloat = 44
+        if let text = usableRestingText {
+            // Wings exist to pass a real camera; a simulated one is crossed by a single row.
+            guard isNotched else { return 0 }
+            wanted = max(wanted, text.wing.rounded(.up) + NotchLayout.restingTextOuterInset + NotchLayout.restingTextInnerInset)
+        }
+        // A wing is all or nothing: clipped text reads worse than a bare camera.
+        // The measured room is the only limit, so nothing shown is ever cut.
+        return restingRoom >= wanted ? wanted : 0
+    }
+    /// Without a camera the cutout is empty, so resting content fills it and
+    /// the island grows only when that content is wider than the cutout.
+    var restingRowWidth: CGFloat? {
+        guard !isNotched, let text = usableRestingText else { return nil }
+        let wanted = max(cameraWidth, text.row.rounded(.up) + NotchLayout.restingTextOuterInset * 2)
+        return restingRoom >= ((wanted - cameraWidth) / 2).rounded(.up) ? wanted : nil
     }
     var collapsed: CGSize {
-        CGSize(width: min(screen.width - 24, cameraWidth + restingWingWidth * 2), height: menuBarHeight)
+        CGSize(width: min(screen.width - 24, restingRowWidth ?? cameraWidth + restingWingWidth * 2), height: menuBarHeight)
     }
     func restingSize(showsContent: Bool) -> CGSize {
-        showsContent ? collapsed : CGSize(width: cameraWidth, height: cameraHeight)
+        showsContent || usableRestingText != nil ? collapsed : CGSize(width: cameraWidth, height: cameraHeight)
     }
     /// Music remains one row high, with the physical camera between its wings.
     /// Insufficient menu space hides the wings instead of growing below the camera.
