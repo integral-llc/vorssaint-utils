@@ -248,7 +248,9 @@ enum SpaceWindowBridge {
     /// macOS also travels to the window's Space; current macOS ignores the
     /// Space part, which is why SpaceHop verifies the outcome and escalates.
     /// The follow-up record pair makes the window key without clicking any of
-    /// its content (the synthetic click points just outside the frame).
+    /// its content. The press carries no location at all: a point just outside
+    /// the frame is still the corner's resize area, and apps answered it by
+    /// dragging that corner to the corner of the display.
     /// Returns false when the window server did not take the request, so the
     /// caller can fall back to app-level activation.
     @discardableResult
@@ -259,12 +261,11 @@ enum SpaceWindowBridge {
         let userGenerated: UInt32 = 0x200
         guard setFrontProcess(&psn, windowID, userGenerated) == .success else { return false }
         var targetID = windowID
-        var clickPoint = CGPoint(x: -1, y: -1)
         var record = [UInt8](repeating: 0, count: 0x100)
         record[0x04] = 0xf8 // declared record length
         record[0x3a] = 0x10
         withUnsafeBytes(of: &targetID) { record.replaceSubrange(0x3c..<0x3c + $0.count, with: $0) }
-        withUnsafeBytes(of: &clickPoint) { record.replaceSubrange(0x20..<0x20 + $0.count, with: $0) }
+        record.replaceSubrange(0x20..<0x30, with: repeatElement(0xff, count: 0x10))
         record[0x08] = 0x01 // left mouse down…
         let down = postEventRecord(&psn, &record)
         record[0x08] = 0x02 // …then up: the pair makes the window key
