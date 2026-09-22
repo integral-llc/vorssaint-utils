@@ -8,6 +8,7 @@ import ApplicationServices
 /// activate an app or post input. Native window ordering is validated separately.
 enum SwitcherActivationTests {
     static var events: [String] = []
+    static var records: [[UInt8]] = []
     static var canRaise = true
 
     final class App {
@@ -43,14 +44,13 @@ enum SwitcherActivationTests {
         static var setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?
         static var postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?
     }
-    static var clickPoints: [CGPoint] = []
     static func reset(raise: Bool = true, front: CGError = .success, down: CGError = .success) {
-        events = []; clickPoints = []; canRaise = raise
+        events = []; records = []; canRaise = raise
         Bridge.processForPID = { pid, _ in events.append("owner:\(pid)"); return noErr }
         Bridge.setFrontProcess = { _, id, _ in events.append("front:\(id)"); return front }
         Bridge.postEventRecord = { _, bytes in
             events.append("event:\(bytes[8])")
-            clickPoints.append(UnsafeRawPointer(bytes).loadUnaligned(fromByteOffset: 0x20, as: CGPoint.self))
+            records.append(Array(UnsafeBufferPointer(start: bytes, count: 0x100)))
             return down
         }
     }
@@ -63,7 +63,14 @@ enum SwitcherActivationTests {
                      "a delivered window selection raises the exact window without activating every sibling")
         // Near the frame is a resize area and no location reads as the top-left
         // corner, so the press goes where no window reaches and is never released.
-        suite.expect(clickPoints == [CGPoint(x: 300_000, y: 300_000)] && !events.contains("event:2"),
+        let windowIDBytes = withUnsafeBytes(of: CGWindowID(77).littleEndian, Array.init)
+        suite.expect(records.count == 1 && records.allSatisfy { record in
+            record[0x04] == 0xf8 && record[0x3a] == 0x10
+                && Array(record[0x3c..<0x40]) == windowIDBytes
+        }, "the key-making press names the window")
+        suite.expect(records.map { record in
+            record.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0x20, as: CGPoint.self) }
+        } == [CGPoint(x: 300_000, y: 300_000)] && !events.contains("event:2"),
                      "the press that makes a window key lands past any window and cannot complete a click")
         reset(raise: false); select()
         suite.expect(events.contains("activate:20:false"), "a window lost by Accessibility retains cooperative recovery")

@@ -167,7 +167,8 @@ final class LayoutSwitcherService: ObservableObject {
         // first word and cannot ask for itself.
         if nextConfig.enabled, nextConfig.automatic { warmUpEvidence() }
         hotkey.sync(enabled: nextConfig.enabled,
-                    shortcut: GlobalShortcutRole.layoutSwitcher.savedShortcut)
+                    shortcut: GlobalShortcutRole.layoutSwitcher.savedShortcut,
+                    storageKey: GlobalShortcutRole.layoutSwitcher.storageKey)
 
         if SessionActivitySupport.tapShouldRun(featureWanted: nextConfig.enabled,
                                                accessibilityGranted: AXIsProcessTrusted(),

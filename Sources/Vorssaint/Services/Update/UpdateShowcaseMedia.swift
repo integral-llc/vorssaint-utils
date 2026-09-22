@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Vorssaint
 
 import Combine
-import CryptoKit
 import Foundation
 
 enum UpdateShowcaseInfo {
@@ -49,11 +48,7 @@ enum UpdateShowcaseInfo {
     static let downloadCeilingBytes: Int64 = 200 * 1024 * 1024
 
     static func sha256Matches(_ data: Data, expectedHex: String) -> Bool {
-        guard expectedHex.utf8.count == SHA256.byteCount * 2 else { return false }
-        let actual = SHA256.hash(data: data)
-            .map { String(format: "%02x", $0) }
-            .joined()
-        return actual == expectedHex.lowercased()
+        UpdateServiceSupport.sha256Matches(data, expectedHex: expectedHex)
     }
 
     static func cleanupCache() {
