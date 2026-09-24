@@ -256,14 +256,15 @@ enum SpaceWindowBridge {
     /// window as the one that comes up front, marked as user-initiated. Older
     /// macOS also travels to the window's Space; current macOS ignores the
     /// Space part, which is why SpaceHop verifies the outcome and escalates.
-    /// The follow-up press makes the window key without clicking any of its
-    /// content, and both of its halves matter. It lands far past the
-    /// bottom-right corner: a point just outside the frame is a corner's resize
-    /// area, which macOS 27 answers by dragging that corner to the corner of
-    /// the display, while no location at all is read by some apps as their
-    /// top-left corner, where a control usually sits. It is never released: a
-    /// press alone makes the window key, and without a release nothing can be
-    /// clicked wherever an app decides the point is.
+    /// The follow-up record is a lone press that makes the window key without
+    /// clicking any of its content. It has no release, so no control can ever
+    /// be activated, and it aims far past the bottom-right of any window. A
+    /// point just outside the frame lands on the invisible resize border, and
+    /// the repeated focus pass then finished a resize that dragged the
+    /// window's top-left corner to the screen's own. An all-ones (NaN) point
+    /// is turned back into (0, 0) by some apps, which then click whatever sits
+    /// at their top-left corner; a far positive point keeps any such fallback
+    /// on the opposite corner.
     /// Returns false when the window server did not take the request, so the
     /// caller can fall back to app-level activation.
     @discardableResult
@@ -278,9 +279,10 @@ enum SpaceWindowBridge {
         record[0x04] = 0xf8 // declared record length
         record[0x3a] = 0x10
         withUnsafeBytes(of: &targetID) { record.replaceSubrange(0x3c..<0x3c + $0.count, with: $0) }
-        var pressPoint = CGPoint(x: 300_000, y: 300_000)
-        withUnsafeBytes(of: &pressPoint) { record.replaceSubrange(0x20..<0x20 + $0.count, with: $0) }
-        record[0x08] = 0x01 // left mouse down
+        // Window-relative location, far past the bottom-right of any window.
+        var farPoint = CGPoint(x: 300_000, y: 300_000)
+        withUnsafeBytes(of: &farPoint) { record.replaceSubrange(0x20..<0x20 + $0.count, with: $0) }
+        record[0x08] = 0x01 // left mouse down alone makes the window key
         return postEventRecord(&psn, &record) == .success
     }
 

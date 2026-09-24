@@ -44,14 +44,14 @@ enum SwitcherActivationTests {
         static var setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?
         static var postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?
     }
-    static func reset(raise: Bool = true, front: CGError = .success, down: CGError = .success) {
+    static func reset(raise: Bool = true, front: CGError = .success, down: CGError = .success, up: CGError = .success) {
         events = []; records = []; canRaise = raise
         Bridge.processForPID = { pid, _ in events.append("owner:\(pid)"); return noErr }
         Bridge.setFrontProcess = { _, id, _ in events.append("front:\(id)"); return front }
         Bridge.postEventRecord = { _, bytes in
             events.append("event:\(bytes[8])")
             records.append(Array(UnsafeBufferPointer(start: bytes, count: 0x100)))
-            return down
+            return bytes[8] == 1 ? down : up
         }
     }
     static func run(_ suite: TestSuite) {
@@ -61,23 +61,28 @@ enum SwitcherActivationTests {
         reset(); select()
         suite.expect(events == ["owner:20", "front:77", "event:1", "raise:77:20:false"],
                      "a delivered window selection raises the exact window without activating every sibling")
-        // Near the frame is a resize area and no location reads as the top-left
-        // corner, so the press goes where no window reaches and is never released.
+        // The press that makes the window key must name the window and aim far
+        // past its bottom-right: a point near the frame's corner hits the resize
+        // border, and some apps turn a NaN point into their top-left corner.
+        // Without a release, no control can be activated wherever it lands.
         let windowIDBytes = withUnsafeBytes(of: CGWindowID(77).littleEndian, Array.init)
+        let farPointBytes = withUnsafeBytes(of: CGPoint(x: 300_000, y: 300_000), Array.init)
         suite.expect(records.count == 1 && records.allSatisfy { record in
             record[0x04] == 0xf8 && record[0x3a] == 0x10
                 && Array(record[0x3c..<0x40]) == windowIDBytes
-        }, "the key-making press names the window")
-        suite.expect(records.map { record in
-            record.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0x20, as: CGPoint.self) }
-        } == [CGPoint(x: 300_000, y: 300_000)] && !events.contains("event:2"),
-                     "the press that makes a window key lands past any window and cannot complete a click")
+                && Array(record[0x20..<0x30]) == farPointBytes
+        }, "the key-making press names the window and points far past its bottom-right")
+        suite.expect(records.map { $0[0x08] } == [1], "the key-making event is a lone press with no release")
         reset(raise: false); select()
         suite.expect(events.contains("activate:20:false"), "a window lost by Accessibility retains cooperative recovery")
         reset(front: .failure); select()
         suite.expect(!events.contains("event:1") && events.contains("activate:20:false"), "a refused front request uses the previous activation path")
-        reset(down: .failure); select()
-        suite.expect(events.contains("activate:20:false"), "a refused press triggers recovery")
+        for down in [CGError.success, .failure] {
+            reset(down: down); select()
+            suite.expect(events.contains("activate:20:false") == (down != .success),
+                         "a refused press triggers recovery")
+            suite.expect(!events.contains("event:2"), "no release is ever posted")
+        }
         reset(); Bridge.postEventRecord = nil; select()
         suite.expect(!events.contains("front:77") && events.contains("activate:20:false"), "missing event transport cannot claim success")
         reset(); Bridge.setFrontProcess = nil; select()

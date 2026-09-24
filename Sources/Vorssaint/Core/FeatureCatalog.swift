@@ -31,7 +31,7 @@ enum AppFeature: String, CaseIterable {
          commandBar, screenRecorder, killProcess, portManager
     // Dynamic Island, then its extensions
     case notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics,
-         notchQueue, notchLiveEqualizer, notchDownloads
+         notchQueue, notchLiveEqualizer, notchDownloads, notchAgents
     case youtubeTranscriber
     // System monitor, one entry per metric family (temperatures live with
     // their parent metric: CPU temp with CPU, battery temp with power).
@@ -120,7 +120,7 @@ extension AppFeature {
         case .youtubeTranscriber:
             return .tools
         case .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories,
-             .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads:
+             .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchAgents:
             return .dynamicIsland
         case .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .fanControl:
@@ -143,7 +143,7 @@ extension AppFeature {
         case .mouseAcceleration: return "cursorarrow.rays"
         case .mouseNavigation: return "arrow.left.arrow.right"
         case .mouseButtonShortcuts: return "button.programmable"
-        case .middleClick: return "computermouse"
+        case .middleClick: return "hand.tap"
         case .keyboardDebounce: return "keyboard"
         case .textSnippets: return "text.append"
         case .layoutSwitcher: return "character.cursor.ibeam"
@@ -190,6 +190,7 @@ extension AppFeature {
         case .notchDownloads: return "arrow.down.circle"
         case .notchNotifications: return "bell"
         case .notchCalendar: return "calendar"
+        case .notchAgents: return "sparkles"
         case .notch: return "macbook"
         case .radialMenu: return "circle.grid.cross"
         case .scratchpad: return "note.text"
@@ -260,6 +261,7 @@ extension AppFeature {
         case .notchDownloads: return [DefaultsKey.notchDownloadsEnabled]
         case .notchNotifications: return [DefaultsKey.notchNotificationsEnabled]
         case .notchCalendar: return [DefaultsKey.notchCalendarEnabled]
+        case .notchAgents: return [DefaultsKey.notchAgentsEnabled]
         case .notch: return [DefaultsKey.notchEnabled]
         case .radialMenu: return [DefaultsKey.radialMenuEnabled]
         case .clipboardHistory: return [DefaultsKey.clipboardHistoryEnabled]
@@ -293,6 +295,9 @@ extension AppFeature {
         case .notchGestures: return []
         case .notchTimer, .notchAccessories: return []
         case .notchLyrics, .notchQueue: return []
+        // Session logs and the saved limits sit in the home folder, outside
+        // every protected location, and no sign-in or keychain item is used.
+        case .notchAgents: return []
         // The bars read the player's own audio output, which macOS gates
         // behind the same permission the mixer and the recorder ask for.
         case .notchLiveEqualizer: return [.audioCapture]
@@ -415,6 +420,9 @@ extension AppFeature {
                         && boolFor(DefaultsKey.brightnessControlEnabled))
                     || (boolFor(DefaultsKey.notchClipboardWindow) && isAvailable(.clipboardHistory))
             case (.radialMenu, .accessibility):
+                if let profiles = dataFor(DefaultsKey.radialMenuProfiles) {
+                    return RadialMenuSupport.needsAccessibility(RadialMenuSupport.decodeProfiles(profiles))
+                }
                 return RadialMenuSupport.needsAccessibility(
                     RadialMenuSupport.decode(dataFor(DefaultsKey.radialMenuItems)))
                     || RadialMenuMouseTrigger.sanitized(
