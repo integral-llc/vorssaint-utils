@@ -13,7 +13,6 @@ struct NotchNoticeView: View {
     private var inset: CGFloat { min(16, wingWidth / 6) }
     private var tint: Color {
         switch notice.event {
-        case .brightness, .keyboardLight: return .yellow
         // A warning reads as one in any agent's color; other AI notices wear it.
         case .agents: return notice.symbol.hasPrefix("exclamationmark") ? .orange : notice.agent?.tint ?? .white
         default: return .white
@@ -56,6 +55,8 @@ struct NotchNoticeView: View {
                     // and renewals keep a symbol that says what happened.
                     if notice.event == .agents, let agent = notice.agent, notice.symbol == agent.symbol {
                         NotchAgentMark(provider: agent, size: 13)
+                    } else if notice.event == .track {
+                        NotchTrackArtwork(size: min(18, geometry.stripHeight - 6))
                     } else {
                         Image(systemName: notice.symbol)
                             .font(.system(size: 14, weight: .medium))
@@ -67,7 +68,7 @@ struct NotchNoticeView: View {
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(notice.event == .track ? .tail : .middle)
                     .contentTransition(.numericText())
             }
             .frame(maxWidth: .infinity, alignment: notice.readsFromEnds ? .leading : .trailing)
@@ -98,6 +99,14 @@ struct NotchNoticeView: View {
     }
 }
 
+/// The new song's cover, read as it arrives: it often lands after the title.
+private struct NotchTrackArtwork: View {
+    @ObservedObject private var music = NotchMusicService.shared
+    let size: CGFloat
+
+    var body: some View { NotchArtwork(image: music.artwork, size: size) }
+}
+
 /// Level feedback occupies the header while the current page stays usable.
 struct NotchExpandedLevelView: View {
     let notice: NotchNotice
@@ -106,8 +115,7 @@ struct NotchExpandedLevelView: View {
         HStack(spacing: 8) {
             Image(systemName: notice.symbol)
                 .frame(width: 18)
-            NotchMeter(value: notice.level ?? 0, height: 5,
-                       tint: notice.event == .volume ? .white : .yellow)
+            NotchMeter(value: notice.level ?? 0, height: 5, tint: .white)
                 .frame(maxWidth: 96)
             Text(notice.detail)
                 .monospacedDigit()

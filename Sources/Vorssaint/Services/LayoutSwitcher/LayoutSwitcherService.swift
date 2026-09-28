@@ -502,7 +502,7 @@ final class LayoutSwitcherService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         guard type == .keyDown else { return Unmanaged.passUnretained(event) }
-        guard event.getIntegerValueField(.eventSourceUserData) != TextSnippetService.syntheticMarker else {
+        guard !OwnKeyEvent.isPosted(event) else {
             return Unmanaged.passUnretained(event)
         }
         // Secure input means a password field. Nothing typed there is kept,

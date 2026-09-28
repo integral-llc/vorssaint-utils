@@ -125,16 +125,19 @@ private struct FailableRadialMenuProfile: Decodable {
     }
 }
 
-/// A profile read for its mouse button alone: the question the event taps ask,
-/// answered without walking the items or decoding the icons they carry.
-private struct RadialMenuProfileButton: Decodable {
+/// A profile read for its mouse button and trackpad tap alone: the questions
+/// the event taps and the Features hub ask, answered without walking the
+/// items or decoding the icons they carry.
+private struct RadialMenuProfileTriggers: Decodable {
     let mouseButton: String?
+    let trackpadTap: Bool
 
-    private enum CodingKeys: String, CodingKey { case mouseButton }
+    private enum CodingKeys: String, CodingKey { case mouseButton, trackpadTap }
 
     init(from decoder: Decoder) throws {
         let container = try? decoder.container(keyedBy: CodingKeys.self)
         mouseButton = (try? container?.decodeIfPresent(String.self, forKey: .mouseButton)) ?? nil
+        trackpadTap = (try? container?.decodeIfPresent(Bool.self, forKey: .trackpadTap)) ?? false
     }
 }
 
@@ -561,7 +564,9 @@ enum RadialNowPlayingSupport {
             if let value = fields[key] as? NSNumber { info[key] = value }
         }
         if fields["artworkUnchanged"] as? Bool == true { info["artworkUnchanged"] = true }
-        if let canSeek = fields["canSeek"] as? Bool { info["canSeek"] = canSeek }
+        for key in ["canSeek", "canSkipNext", "canSkipPrevious"] {
+            if let value = fields[key] as? Bool { info[key] = value }
+        }
         if let identifier = fields["itemIdentifier"] as? String, !identifier.isEmpty,
            identifier.utf8.count <= 512, !identifier.contains("\0") { info["itemIdentifier"] = identifier }
         if let artwork = fields["artworkBase64"] as? String,
@@ -792,12 +797,26 @@ enum RadialMenuSupport {
     /// the two answers cannot drift apart for a user who has not saved a
     /// profile yet.
     static func claimedMouseButtons(_ data: Data?, defaults: UserDefaults = .standard) -> [Int64] {
-        if let data, let decoded = try? JSONDecoder().decode([RadialMenuProfileButton].self, from: data) {
+        if let data, let decoded = try? JSONDecoder().decode([RadialMenuProfileTriggers].self, from: data) {
             return decoded.compactMap { RadialMenuMouseTrigger.sanitized($0.mouseButton).buttonNumber }
         }
         let legacy = RadialMenuMouseTrigger.sanitized(
             defaults.string(forKey: DefaultsKey.radialMenuMouseButton))
         return legacy.buttonNumber.map { [$0] } ?? []
+    }
+
+    /// Whether any wheel opens from a mouse button or the trackpad tap, the
+    /// triggers that keep an input tap running while the menu is on. Read
+    /// like `claimedMouseButtons`, from the stored triggers alone and with
+    /// the same legacy fallback, so the Features hub never decodes icons.
+    static func opensFromMouseOrTrackpad(_ data: Data?, defaults: UserDefaults = .standard) -> Bool {
+        if let data, let decoded = try? JSONDecoder().decode([RadialMenuProfileTriggers].self, from: data) {
+            return decoded.contains {
+                RadialMenuMouseTrigger.sanitized($0.mouseButton) != .off || $0.trackpadTap
+            }
+        }
+        return RadialMenuMouseTrigger.sanitized(
+            defaults.string(forKey: DefaultsKey.radialMenuMouseButton)) != .off
     }
 
     /// Decodes profiles from JSON blob. If missing, checks for legacy

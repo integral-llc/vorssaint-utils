@@ -5,6 +5,65 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+struct SwitcherScrollNavigation {
+    static let gestureStep: Double = 30
+    private var accumulated: Double = 0
+    private var lastTimestamp: CGEventTimestamp?
+    private var lastGesturePhaseTimestamp: CGEventTimestamp?
+    private var wasMouseWheel: Bool?
+
+    mutating func selectionDelta(for event: CGEvent) -> Int {
+        guard event.getIntegerValueField(.eventSourceUserData) != ScrollWheelSupport.syntheticTag else {
+            return 0
+        }
+        let traits = ScrollWheelEventTraits(
+            isContinuous: event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0,
+            momentumPhase: event.getIntegerValueField(.scrollWheelEventMomentumPhase),
+            scrollPhase: event.getIntegerValueField(.scrollWheelEventScrollPhase),
+            scrollCount: event.getIntegerValueField(.scrollWheelEventScrollCount)
+        )
+        let phase = CGScrollPhase(rawValue: UInt32(truncatingIfNeeded: traits.scrollPhase))
+        let isMouseWheel = ScrollWheelSupport.isMouseWheel(traits, secondsSinceLastGesturePhase:
+            lastGesturePhaseTimestamp.map { Double(event.timestamp &- $0) / 1_000_000_000 })
+        if traits.scrollPhase != 0 || traits.momentumPhase != 0 {
+            lastGesturePhaseTimestamp = event.timestamp
+        }
+        // Wheel fractions survive pauses; only touch gestures have an idle timeout.
+        if wasMouseWheel != isMouseWheel || phase == .began
+            || (!isMouseWheel && lastTimestamp.map({ event.timestamp &- $0 > 250_000_000 }) == true) {
+            accumulated = 0
+        }
+        wasMouseWheel = isMouseWheel
+        lastTimestamp = event.timestamp
+        guard traits.momentumPhase == 0,
+              phase != .ended, phase != .cancelled else {
+            accumulated = 0
+            return 0
+        }
+        func movement(line: CGEventField, fixed: CGEventField, point: CGEventField) -> Double {
+            guard isMouseWheel else { return event.getDoubleValueField(point) }
+            let lines = event.getDoubleValueField(line)
+            if lines != 0 { return lines }
+            let fraction = event.getDoubleValueField(fixed)
+            if fraction != 0 { return fraction }
+            return traits.isContinuous ? event.getDoubleValueField(point) / ScrollWheelSupport.pointsPerLine : 0
+        }
+        let vertical = movement(line: .scrollWheelEventDeltaAxis1, fixed: .scrollWheelEventFixedPtDeltaAxis1,
+                                point: .scrollWheelEventPointDeltaAxis1)
+        let horizontal = movement(line: .scrollWheelEventDeltaAxis2, fixed: .scrollWheelEventFixedPtDeltaAxis2,
+                                  point: .scrollWheelEventPointDeltaAxis2)
+        let delta = abs(horizontal) > abs(vertical) ? horizontal : vertical
+        guard delta.isFinite, delta != 0 else { return 0 }
+        if accumulated * delta < 0 { accumulated = 0 }
+        accumulated += delta
+        let step = isMouseWheel ? 1 : Self.gestureStep
+        guard abs(accumulated) >= step else { return 0 }
+        // Each sample advances at most one item, without acceleration or momentum.
+        accumulated = isMouseWheel ? accumulated.truncatingRemainder(dividingBy: step) : 0
+        return delta < 0 ? 1 : -1
+    }
+}
+
 struct SwitcherCloseState: Equatable {
     let remainingItemIDs: [String]
     let selectedIndex: Int
@@ -54,9 +113,20 @@ final class SwitcherWindowFocusRetryState {
                         targetMinimizedState: Bool?,
                         targetAppWindowIDs: @autoclosure () -> Set<CGWindowID>,
                         targetAppFocusedWindowID: @autoclosure () -> CGWindowID?,
+                        targetWindowIsFocused: @autoclosure () -> Bool = false,
+                        stopsWhenTargetFocused: Bool = false,
                         ignoresForeground: Bool = false,
                         ownPID: pid_t = ProcessInfo.processInfo.processIdentifier) -> Bool {
         guard isActive else { return false }
+        let observedFrontmostPID = frontmostPID()
+        if stopsWhenTargetFocused,
+           !ignoresForeground,
+           !targetStartedMinimized,
+           observedFrontmostPID == targetPID,
+           targetWindowIsFocused() {
+            isActive = false
+            return false
+        }
         isActive = SwitcherSupport.shouldContinueFocusRetry(
             targetPID: targetPID,
             sourcePID: sourcePID,
@@ -1359,6 +1429,21 @@ enum SwitcherSupport {
         })
     }
 
+    /// Source app for the delayed focus guards only. A session source wins;
+    /// otherwise the app a caller saw in front when the activation began keeps
+    /// the handoff retry settling, without reclaiming focus after a later
+    /// unrelated activation. The target and this process are never a handoff.
+    static func focusRetrySourcePID(sessionSourcePID: pid_t?,
+                                    handoffSourcePID: pid_t?,
+                                    targetPID: pid_t,
+                                    ownPID: pid_t = ProcessInfo.processInfo.processIdentifier) -> pid_t? {
+        if let sessionSourcePID { return sessionSourcePID }
+        guard let handoffSourcePID,
+              handoffSourcePID != targetPID,
+              handoffSourcePID != ownPID else { return nil }
+        return handoffSourcePID
+    }
+
     static func shouldContinueFocusRetry(targetPID: pid_t,
                                          sourcePID: pid_t?,
                                          frontmostPID: @autoclosure () -> pid_t?,
@@ -1376,13 +1461,20 @@ enum SwitcherSupport {
         let initialFrontmostPID = frontmostPID()
         // A hop travels across desktops, and the system fronts whatever sits
         // on top of each one it passes. Which app is in front while that runs
-        // says nothing about where the user wants to be, and reading it as
-        // "they moved on" leaves the window they picked behind that app. Such
-        // a pass gives up for the one signal that does carry intent: the app
-        // moved to a window it opened after the switch.
+        // says nothing about where the user wants to be, so hop passes opt out
+        // of this check and use the app's own focus below. Ordinary retries
+        // must never reclaim a window after an unrelated app is frontmost.
+        // The source app is allowed while the handoff is settling, because
+        // the target may still need its delayed pass.
+        let waitingForInitialMinimizedRestore = targetStartedMinimized
+            && targetIsMinimized
+            && (sourcePID == nil || initialFrontmostPID == sourcePID)
         if !ignoresForeground,
-           let sourcePID, let initialFrontmostPID,
-           initialFrontmostPID != targetPID && initialFrontmostPID != sourcePID && initialFrontmostPID != ownPID {
+           let initialFrontmostPID,
+           initialFrontmostPID != targetPID,
+           initialFrontmostPID != ownPID,
+           initialFrontmostPID != sourcePID,
+           !waitingForInitialMinimizedRestore {
             return false
         }
         // Z-order cannot identify keyboard focus: a new transparent helper

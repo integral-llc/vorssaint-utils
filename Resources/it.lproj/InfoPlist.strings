@@ -14,10 +14,11 @@
 "NSCameraUsageDescription" = "Vorssaint mostra la fotocamera solo nella finestra di anteprima che apri, così puoi controllare il tuo aspetto prima di una chiamata. Nulla viene registrato e nulla lascia il tuo Mac.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "Vorssaint salva qui le trascrizioni che avvii e controlla i metadati locali per esaminare, organizzare o spostare nel Cestino solo i file WhatsApp confermati scelti da te.";
+"NSDownloadsFolderUsageDescription" = "Vorssaint salva qui le trascrizioni che avvii e controlla i metadati locali per esaminare, organizzare o spostare nel Cestino solo i file WhatsApp confermati scelti da te. La Pulizia cerca anche gli screenshot dimenticati se li salvi qui.";
+
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati.";
-"NSDocumentsFolderUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati.";
-"NSNetworkVolumesUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati.";
-"NSRemovableVolumesUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati.";
+"NSDesktopFolderUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati. La Pulizia cerca anche gli screenshot dimenticati se li salvi qui.";
+"NSDocumentsFolderUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati. La Pulizia cerca anche gli screenshot dimenticati se li salvi qui.";
+"NSNetworkVolumesUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati. La Pulizia cerca anche gli screenshot dimenticati se li salvi qui.";
+"NSRemovableVolumesUsageDescription" = "Vorssaint usa una cartella qui solo quando la scegli tu: per trascrivere un file che gli dai e salvarne la trascrizione, oppure per organizzare i download WhatsApp confermati. La Pulizia cerca anche gli screenshot dimenticati se li salvi qui.";
 "NSCalendarsFullAccessUsageDescription" = "Mostra i tuoi prossimi appuntamenti nella parte superiore dello schermo. Gli eventi del calendario restano su questo Mac.";

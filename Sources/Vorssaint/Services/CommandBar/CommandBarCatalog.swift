@@ -845,6 +845,12 @@ enum CommandBarCatalog {
                         item.destination.page, isAvailable: { $0.isAvailable })
                 else { return nil }
                 id = "settings.feature.\(feature.rawValue)"
+            case .setting(let anchor):
+                guard item.feature.map(\.isAvailable) ?? true,
+                      FeatureVisibilitySupport.isPageVisible(
+                        item.destination.page, isAvailable: { $0.isAvailable })
+                else { return nil }
+                id = "settings.setting.\(anchor.rawValue)"
             }
             return CommandBarEntry(
                 id: id,
@@ -854,7 +860,8 @@ enum CommandBarCatalog {
                 icon: .symbol(item.icon),
                 run: { _ in
                     let routed = SettingsSearchSupport.route(for: item)
-                    openSettings(at: routed.destination, targetFeature: routed.targetFeature)
+                    openSettings(at: routed.destination, targetFeature: routed.targetFeature,
+                                 sidebarFeature: item.feature)
                 })
         }
     }
@@ -1142,8 +1149,15 @@ enum CommandBarCatalog {
                     .map { .appIcon(path: $0.path) } ?? .symbol("macwindow"),
                 countsUsage: false,
                 run: { _ in
+                    // Capture before the beat: the bar never activates, so this
+                    // is still the app in front, and a switch during the delay
+                    // must not become the handoff source for a later reclaim.
+                    let handoffSourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
                     afterBeat(0.1) {
-                        WindowActivator.activate(pid: pid, windowID: windowID, appName: appName)
+                        WindowActivator.activate(pid: pid,
+                                                 windowID: windowID,
+                                                 appName: appName,
+                                                 handoffSourcePID: handoffSourcePID)
                     }
                 })
         }
@@ -1703,8 +1717,10 @@ enum CommandBarCatalog {
     }
 
     private static func openSettings(at destination: FeatureSettingsDestination,
-                                     targetFeature: AppFeature? = nil) {
-        SettingsRouter.shared.request(destination, targetFeature: targetFeature)
+                                     targetFeature: AppFeature? = nil,
+                                     sidebarFeature: AppFeature? = nil) {
+        SettingsRouter.shared.request(destination, targetFeature: targetFeature,
+                                      sidebarFeature: sidebarFeature)
         appDelegate()?.openSettingsWindow()
     }
 

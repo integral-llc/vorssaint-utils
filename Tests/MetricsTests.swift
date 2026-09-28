@@ -17,13 +17,19 @@ struct MetricsTests {
             ("metrics", {
                 MetricsFeatureTests.run(suite)
                 ProcessNameContract.run(suite)
+                SystemMonitorCPUTests.run(suite)
             }),
             ("clipboard", { ClipboardFeatureTests.run(suite) }),
             ("pointer-input", {
+                PointerOnDisplayContract.run(suite)
                 PointerInputFeatureTests.run(suite)
+                KeyboardDebounceTapTests.run(suite)
+                PointerDisplayLookupContract.run(suite)
                 SuperKeyTapContract.run(suite)
+                PointerScreenContract.run(suite)
             }),
             ("scroll-modifier", { ScrollHorizontalModifierTests.run(suite) }),
+            ("linear-scroll", { LinearScrollTapTests.run(suite) }),
             ("preferences", { PreferencesFeatureTests.run(suite) }),
             ("app-management", { AppManagementFeatureTests.run(suite) }),
             ("window-layout", { WindowLayoutFeatureTests.run(suite) }),
@@ -35,16 +41,22 @@ struct MetricsTests {
                 MixerInputVolumeContract.run(suite)
                 MixerFeatureTests.run(suite)
             }),
+            ("audio-priority", { AudioPriorityTests.run(suite) }),
             ("shelf", { ShelfFeatureTests.run(suite) }),
+            ("overlays", { OverlayPanelTests.run(suite) }),
             ("updates", {
                 UpdateFeatureTests.run(suite)
                 PostUpdateStatusItemRecoveryTests.run(suite)
+                UpdateHighlightsTests.run(suite)
+                UpdateIntroFlowTests.run(suite)
             }),
             ("repository", { RepositoryFeatureTests.run(suite) }),
             ("screenshots", {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
+                ScreenshotScrollingCaptureTests.run(suite)
+                ScreenCaptureToolPickerTests.run(suite)
             }),
             ("recorder", {
                 RecorderFeatureTests.run(suite)
@@ -57,6 +69,7 @@ struct MetricsTests {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)
                 NotchVolumeKeyTests.run(suite)
+                NotchSettingsTabRowTests.run(suite)
             }),
             ("switcher-model", { SwitcherModelFeatureTests.run(suite) }),
             ("agents", { NotchAgentTests.run(suite) }),
@@ -68,8 +81,12 @@ struct MetricsTests {
             ("settings", {
                 SettingsFeatureTests.run(suite)
                 SettingsWindowTests.run { suite.expect($0, $1) }
+                NotchSettingsChoiceTests.run(suite)
             }),
-            ("display-restoration", { DisplayRestorationTests.run(suite) }),
+            ("display-restoration", {
+                DisplayRestorationTests.run(suite)
+                BrightnessStepTests.run(suite)
+            }),
             ("software-dimming", { SoftwareDimmingRouteTests.run { suite.expect($0, $1) } }),
             ("capture", { ScreenshotSelectionRefreshContract.run(suite) }),
             ("keyboard", {
@@ -84,6 +101,7 @@ struct MetricsTests {
                 ScratchpadStoreContractTests.run(suite)
             }),
             ("quit-protection", { QuitProtectionHUD.progressChecks(suite) }),
+            ("scratchpad", { ScratchpadMarkTests.run { suite.expect($0, $1) } }),
             ("recording", {
                 RecorderSampleTimingTests.run(suite)
                 RecorderWriterTests.run(suite)
@@ -94,7 +112,10 @@ struct MetricsTests {
                 SpeedTestTests.run(suite)
                 NetworkAddressTests.run { suite.expect($0, $1) }
             }),
-            ("app-updates", { AppUpdatesContract.run(suite) }),
+            ("app-updates", {
+                AppUpdatesContract.run(suite)
+                AppUpdateRulesContract.run(suite)
+            }),
             ("localization", {
                 LocalizationTests.run(suite)
                 LocalizationFeatureContractTests.run(suite)
@@ -102,6 +123,7 @@ struct MetricsTests {
             ("cleaner", {
                 CleanerEligibilityTests.run(suite)
                 CleanerLastRunContract.run(suite)
+                CleanerScanFlowTests.run(suite)
             }),
             ("uninstaller", {
                 UninstallerFlowTests.run(suite)
@@ -115,6 +137,7 @@ struct MetricsTests {
             ("switcher", {
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)
+                WindowServerCaptureContract.run(suite)
             }),
             ("keep-awake", {
                 KeepAwakeCatalogContract.run(suite)
@@ -122,6 +145,7 @@ struct MetricsTests {
                 KeepAwakeLidSleepTests.run { suite.expect($0, $1) }
                 KeepAwakeTimerHandoffTests.run { suite.expect($0, $1) }
             }),
+            ("wallpaper", { WallpaperContract.run(suite) }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
             ("layout-detection", { LayoutDetectionTests.run(suite) }),
         ]

@@ -28,6 +28,7 @@ extension FeatureStrings {
         case .tr: return .tr
         case .ru: return .ru
         case .es: return .es
+        case .sk: return .sk
         case .de: return .de
         case .fr: return .fr
         case .it: return .it
@@ -36,6 +37,7 @@ extension FeatureStrings {
         case .zhHans: return .zhHans
         case .zhTW: return .zhTW
         case .zhHK: return .zhHK
+        case .uk: return .uk
         }
     }
 }
@@ -124,6 +126,23 @@ extension LayoutSwitcherStrings {
         forgetLearned: "Olvidar las palabras aprendidas",
         forgetLearnedCaption: "La corrección al escribir recuerda las palabras corrientes que escribes a menudo y las correcciones que deshiciste. Se quedan en este Mac y no entran en los ajustes exportados. No se guarda nada que lleve un dígito o un símbolo.",
         learnedForgotten: "Olvidado"
+    )
+
+    static let sk = LayoutSwitcherStrings(
+        pageTitle: "Prepínač rozloženia",
+        hubDescription: "Znova napíše slovo, ktoré ste zadali v nesprávnom rozložení klávesnice.",
+        enable: "Opraviť nesprávne rozloženie klávesnice",
+        enableCaption: "Spáruje zapnuté rozloženia podľa toho, čo píše každá klávesa, takže funguje ľubovoľná dvojica.",
+        shortcutLabel: "Skratka",
+        shortcutCaption: "Znova napíše výber alebo slovo pred kurzorom. Ďalším stlačením ho vráti späť.",
+        automatic: "Opravovať počas písania",
+        automaticCaption: "Sama znova napíše dokončené slovo. Nechajte vypnuté, ak chcete opravovať len na požiadanie.",
+        minimumLength: "Najkratšie slovo na opravu",
+        minimumLengthCaption: "Automatická oprava kratšie slová preskočí.",
+        activeNow: "Sleduje písanie",
+        forgetLearned: "Zabudnúť naučené slová",
+        forgetLearnedCaption: "Oprava počas písania si pamätá bežné slová, ktoré píšete často, aj opravy, ktoré ste vrátili späť. Zostávajú len na tomto Macu a do exportovaných nastavení sa nedostanú. Nič, čo obsahuje číslicu alebo symbol, sa neukladá.",
+        learnedForgotten: "Zabudnuté"
     )
 
     static let de = LayoutSwitcherStrings(
@@ -260,5 +279,22 @@ extension LayoutSwitcherStrings {
         forgetLearned: "忘記已學習的字詞",
         forgetLearnedCaption: "輸入時更正會記住你常輸入的一般字詞和你取消的更正。它們只留在這部 Mac 上，不會進入匯出的設定。含有數字或符號的內容不會儲存。",
         learnedForgotten: "已忘記"
+    )
+
+    static let uk = LayoutSwitcherStrings(
+        pageTitle: "Перемикач розкладки",
+        hubDescription: "Передруковує слово, набране в неправильній розкладці клавіатури.",
+        enable: "Виправляти неправильну розкладку клавіатури",
+        enableCaption: "Зіставляє ввімкнені розкладки за тим, що друкує кожна клавіша, тому працює будь-яка пара.",
+        shortcutLabel: "Клавіатурне скорочення",
+        shortcutCaption: "Передруковує виділений текст або слово перед курсором. Натисніть ще раз, щоб повернути як було.",
+        automatic: "Виправляти під час набору",
+        automaticCaption: "Сама передруковує завершене слово. Залиште вимкненим, щоб виправляти лише на запит.",
+        minimumLength: "Найкоротше слово для виправлення",
+        minimumLengthCaption: "Автоматичне виправлення пропускає коротші слова.",
+        activeNow: "Стежить за набором тексту",
+        forgetLearned: "Забути вивчені слова",
+        forgetLearnedCaption: "Виправлення під час набору запам’ятовує звичайні слова, які ви часто вводите, і виправлення, які ви скасували. Вони залишаються лише на цьому Mac і не потрапляють в експортовані налаштування. Нічого, що містить цифру або символ, не зберігається.",
+        learnedForgotten: "Забуто"
     )
 }

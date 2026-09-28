@@ -26,6 +26,7 @@ final class MenuPanelFocus: ObservableObject {
     @Published private(set) var request: MenuPanelFocusRequest?
     @Published private(set) var activeMetric: MetricDetailKind?
     @Published private(set) var isSwitchingMetricAnchor = false
+    @Published private(set) var popoverIsVisible = false
     private var serial = 0
 
     private init() {}
@@ -55,6 +56,11 @@ final class MenuPanelFocus: ObservableObject {
     func setSwitchingMetricAnchor(_ switching: Bool) {
         isSwitchingMetricAnchor = switching
     }
+
+    func setPopoverVisible(_ visible: Bool) {
+        guard popoverIsVisible != visible else { return }
+        popoverIsVisible = visible
+    }
 }
 
 /// Content of the menu bar popover: keep-awake controls, the volume mixer and
@@ -77,6 +83,7 @@ struct MenuPanelView: View {
     @AppStorage(DefaultsKey.panelShowUtilities) private var showUtilities = true
     @AppStorage(DefaultsKey.panelShowControls) private var showControls = true
     @AppStorage(DefaultsKey.panelShowToggles) private var showToggles = true
+    @AppStorage(DefaultsKey.panelShowWallpaper) private var showWallpaper = true
     @AppStorage(DefaultsKey.panelSectionOrder) private var sectionOrderRaw = ""
     @State private var navigableContentHeight: CGFloat = 0
     @State private var metricContentHeight: CGFloat = 0
@@ -276,6 +283,7 @@ struct MenuPanelView: View {
         case .utilities: return 500
         case .controls: return 360
         case .toggles: return 420
+        case .wallpaper: return 480
         }
     }
 
@@ -286,7 +294,7 @@ struct MenuPanelView: View {
         case .network: return 330
         case .disk: return 360
         case .battery, .power: return 360
-        case .fan: return 240
+        case .fan, .connectedDevices: return 240
         }
     }
 
@@ -298,15 +306,31 @@ struct MenuPanelView: View {
         switch id {
         case .keepAwake: KeepAwakeCard(collapsible: collapsible)
         case .brightness: if showBrightness { BrightnessSection(collapsible: collapsible) }
-        case .mixer: if showMixer { MixerSection(collapsible: collapsible) }
+        case .mixer: if showMixer { mixerOrPrioritySection(collapsible: collapsible) }
         case .system: if showSystem { SystemSection(collapsible: collapsible) }
         case .network: if showNetwork { NetworkSection(collapsible: collapsible) }
         case .disk: if showDisk { DiskSection(collapsible: collapsible) }
         case .power: if showPower { PowerSection(collapsible: collapsible) }
-        case .fanControl: if showFanControl { FanControlSection(collapsible: collapsible) }
+        case .fanControl:
+            // The popover retains its host after closing; detach the curve editor
+            // so cooling heartbeats cannot keep laying out an unseen panel.
+            if showFanControl, notchSize != nil || panelFocus.popoverIsVisible {
+                FanControlSection(collapsible: collapsible)
+            }
         case .utilities: UtilitiesSection(collapsible: collapsible, startCleaning: startCleaning)
         case .controls: QuickControlsSection(collapsible: collapsible)
         case .toggles: QuickTogglesSection(collapsible: collapsible)
+        case .wallpaper: if showWallpaper { WallpaperSection(collapsible: collapsible) }
+        }
+    }
+
+    /// Shows the full mixer when installed, or the priority lists on their own.
+    @ViewBuilder
+    private func mixerOrPrioritySection(collapsible: Bool) -> some View {
+        if AppFeature.mixer.isAvailable {
+            MixerSection(collapsible: collapsible)
+        } else {
+            AudioPrioritySection(collapsible: collapsible)
         }
     }
 
@@ -314,7 +338,7 @@ struct MenuPanelView: View {
     /// what keeps the tabs refreshing when Settings flips one of them.
     private func isSectionVisible(_ id: PanelSectionID) -> Bool {
         _ = (showKeepAwake, showBrightness, brightnessEnabled, showMixer, showSystem, showNetwork,
-             showDisk, showPower, showFanControl, showUtilities, showControls, showToggles)
+             showDisk, showPower, showFanControl, showUtilities, showControls, showToggles, showWallpaper)
         return PanelLayout.isVisibleInPanel(id)
     }
 
@@ -1057,7 +1081,7 @@ struct UtilitiesSection: View {
 }
 
 private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
-    case mouseScroll, focusFollowsMouse, mouseAcceleration, mouseNavigation, switcher, cutPaste, autoQuit, shelf, windowMaximize, dockPreview, keyDebounce,
+    case mouseScroll, linearScroll, focusFollowsMouse, mouseAcceleration, mouseNavigation, switcher, cutPaste, autoQuit, shelf, windowMaximize, dockPreview, keyDebounce,
          dockClick, dockClickHide, dockClickCycle, middleClick, textSnippets, radialMenu, mouseButtonShortcuts, superKey,
          mouseClickDebounce, notch
     case layoutSwitcher
@@ -1069,6 +1093,7 @@ private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
     var feature: AppFeature {
         switch self {
         case .mouseScroll: return .scrollInverter
+        case .linearScroll: return .linearScroll
         case .focusFollowsMouse: return .focusFollowsMouse
         case .mouseAcceleration: return .mouseAcceleration
         case .mouseNavigation: return .mouseNavigation
@@ -1103,7 +1128,7 @@ private enum ControlCategory: String, CaseIterable, Identifiable {
         switch item {
         case .switcher, .dockPreview, .dockClick, .dockClickHide, .dockClickCycle, .windowMaximize, .autoQuit, .notch:
             return .windows
-        case .mouseScroll, .focusFollowsMouse, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts, .middleClick, .keyDebounce,
+        case .mouseScroll, .linearScroll, .focusFollowsMouse, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts, .middleClick, .keyDebounce,
              .textSnippets, .radialMenu, .superKey, .mouseClickDebounce, .layoutSwitcher:
             return .inputDevices
         case .cutPaste, .shelf:
@@ -1152,12 +1177,14 @@ struct QuickControlsSection: View {
     @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
     @AppStorage(DefaultsKey.superKeyEnabled) private var superKeyEnabled = false
     @AppStorage(DefaultsKey.mouseAccelerationDisabled) private var mouseAccelerationDisabled = false
+    @AppStorage(DefaultsKey.linearScrollEnabled) private var linearScrollEnabled = false
     @AppStorage(DefaultsKey.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled = false
     @AppStorage(DefaultsKey.superKeyModifiers) private var superKeyModifierStorage =
         SuperKeySupport.defaultModifierStorageValue
     @AppStorage(DefaultsKey.superKeySource) private var superKeySourceRaw =
         SuperKeySource.capsLock.rawValue
     @AppStorage(DefaultsKey.panelControlMouseScroll) private var showScroll = true
+    @AppStorage(DefaultsKey.panelControlLinearScroll) private var showLinearScroll = true
     @AppStorage(DefaultsKey.panelControlFocusFollowsMouse) private var showFocusFollowsMouse = true
     @AppStorage(DefaultsKey.panelControlMouseNavigation) private var showMouseNavigation = true
     @AppStorage(DefaultsKey.panelControlSwitcher) private var showSwitcher = true
@@ -1279,6 +1306,7 @@ struct QuickControlsSection: View {
     private func isEnabled(_ item: ControlPanelItem) -> Bool {
         switch item {
         case .mouseScroll: return scrollDirectionEnabled
+        case .linearScroll: return linearScrollEnabled
         case .focusFollowsMouse: return focusFollowsMouseEnabled
         case .mouseAcceleration: return mouseAccelerationDisabled
         case .mouseNavigation: return mouseNavigationEnabled
@@ -1358,6 +1386,7 @@ struct QuickControlsSection: View {
     private func isVisible(_ item: ControlPanelItem) -> Bool {
         switch item {
         case .mouseScroll: return showScroll
+        case .linearScroll: return showLinearScroll
         case .focusFollowsMouse: return showFocusFollowsMouse
         case .mouseAcceleration: return showMouseAcceleration
         case .mouseNavigation: return showMouseNavigation
@@ -1398,6 +1427,22 @@ struct QuickControlsSection: View {
                            permissionButtonTitle: l10n.s.permissionRequest,
                            permissionAction: accessibilityPermissionAction(scrollDirectionEnabled))
                 .onChange(of: scrollDirectionEnabled) { _, enabled in
+                    ScrollInverter.shared.syncWithPreferences()
+                    requestAccessibilityIfNeeded(enabled)
+                }
+        case .linearScroll:
+            PanelToggleRow(title: l10n.s.linearScrollName,
+                           caption: caption(l10n.s.linearScrollCaption,
+                                            needsAccessibility: linearScrollEnabled),
+                           systemImage: "arrow.up.and.down.text.horizontal",
+                           isOn: $linearScrollEnabled,
+                           isEditing: editing,
+                           showsDragHandle: true,
+                           visibility: $showLinearScroll,
+                           needsAttention: linearScrollEnabled && !permissions.accessibility,
+                           permissionButtonTitle: l10n.s.permissionRequest,
+                           permissionAction: accessibilityPermissionAction(linearScrollEnabled))
+                .onChange(of: linearScrollEnabled) { _, enabled in
                     ScrollInverter.shared.syncWithPreferences()
                     requestAccessibilityIfNeeded(enabled)
                 }
@@ -1829,6 +1874,7 @@ struct QuickControlsSection: View {
         showSuperKey = true
         showLayoutSwitcher = true
         showMouseAcceleration = true
+        showLinearScroll = true
         showMouseClickDebounce = true
         windowsExpanded = false
         inputExpanded = false

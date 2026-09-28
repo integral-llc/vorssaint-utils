@@ -14,10 +14,11 @@
 "NSCameraUsageDescription" = "Vorssaint zeigt deine Kamera nur im Vorschaufenster, das du öffnest, damit du vor einem Anruf prüfen kannst, wie du aussiehst. Es wird nichts aufgezeichnet und nichts verlässt deinen Mac.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "Vorssaint speichert hier die Transkripte, die du startest, und prüft lokale Metadaten, um nur ausgewählte bestätigte WhatsApp-Dateien zu prüfen, zu organisieren oder in den Papierkorb zu verschieben.";
+"NSDownloadsFolderUsageDescription" = "Vorssaint speichert hier die Transkripte, die du startest, und prüft lokale Metadaten, um nur ausgewählte bestätigte WhatsApp-Dateien zu prüfen, zu organisieren oder in den Papierkorb zu verschieben. Aufräumen sucht außerdem nach vergessenen Bildschirmfotos, wenn du sie hier speicherst.";
+
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren.";
-"NSDocumentsFolderUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren.";
-"NSNetworkVolumesUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren.";
-"NSRemovableVolumesUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren.";
+"NSDesktopFolderUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren. Aufräumen sucht außerdem nach vergessenen Bildschirmfotos, wenn du sie hier speicherst.";
+"NSDocumentsFolderUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren. Aufräumen sucht außerdem nach vergessenen Bildschirmfotos, wenn du sie hier speicherst.";
+"NSNetworkVolumesUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren. Aufräumen sucht außerdem nach vergessenen Bildschirmfotos, wenn du sie hier speicherst.";
+"NSRemovableVolumesUsageDescription" = "Vorssaint nutzt einen Ordner hier nur, wenn du ihn auswählst: um eine übergebene Datei zu transkribieren und das Transkript zu sichern, oder um bestätigte WhatsApp-Downloads zu organisieren. Aufräumen sucht außerdem nach vergessenen Bildschirmfotos, wenn du sie hier speicherst.";
 "NSCalendarsFullAccessUsageDescription" = "Zeige deine anstehenden Termine im oberen Bildschirmbereich. Kalenderereignisse bleiben auf diesem Mac.";

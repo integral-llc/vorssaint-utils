@@ -14,10 +14,11 @@
 "NSCameraUsageDescription" = "O Vorssaint mostra sua câmera apenas na janela de prévia que você abre, para conferir como você está antes de uma chamada. Nada é gravado nem sai do seu Mac.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "O Vorssaint salva aqui as transcrições que você inicia e consulta metadados locais para revisar, organizar ou mover para a Lixeira apenas os arquivos confirmados do WhatsApp que você escolher.";
+"NSDownloadsFolderUsageDescription" = "O Vorssaint salva aqui as transcrições que você inicia e consulta metadados locais para revisar, organizar ou mover para a Lixeira apenas os arquivos confirmados do WhatsApp que você escolher. A Limpeza também procura capturas de tela esquecidas quando você as salva aqui.";
+
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp.";
-"NSDocumentsFolderUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp.";
-"NSNetworkVolumesUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp.";
-"NSRemovableVolumesUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp.";
+"NSDesktopFolderUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp. A Limpeza também procura capturas de tela esquecidas quando você as salva aqui.";
+"NSDocumentsFolderUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp. A Limpeza também procura capturas de tela esquecidas quando você as salva aqui.";
+"NSNetworkVolumesUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp. A Limpeza também procura capturas de tela esquecidas quando você as salva aqui.";
+"NSRemovableVolumesUsageDescription" = "O Vorssaint usa uma pasta aqui somente quando você a escolhe: para transcrever um arquivo que você entrega e salvar a transcrição, ou para organizar downloads confirmados do WhatsApp. A Limpeza também procura capturas de tela esquecidas quando você as salva aqui.";
 "NSCalendarsFullAccessUsageDescription" = "Mostra seus próximos compromissos na parte superior da tela. Os eventos do calendário ficam neste Mac.";

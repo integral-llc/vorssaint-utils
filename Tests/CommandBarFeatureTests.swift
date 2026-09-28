@@ -75,6 +75,7 @@ enum CommandBarFeatureTests {
     static func run(_ suite: TestSuite) {
         CommandBarInputSourceContract.run(suite)
         CommandBarTerminationContract.run(suite)
+        CommandBarAppSortContract.run(suite)
         let isCodeLine: (String) -> Bool = {
             !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
         }
@@ -1201,6 +1202,17 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarRowShortcuts.key(for: commandPeriod, in: emojiBinding)
                 == CommandBarPreferences.emojiBrowserRowID,
                "the Emoji browser row can own a global shortcut like any other row")
+        var alphabetBindings: [String: GlobalShortcut] = [:]
+        for index in 0..<26 {
+            alphabetBindings = CommandBarRowShortcuts.setting(
+                GlobalShortcut(keyCode: Int64(index), modifiers: [.control]),
+                for: "app.bundle.\(index)", in: alphabetBindings)
+        }
+        suite.expect(alphabetBindings.count == 26
+                && CommandBarRowShortcuts.hasRoom(for: "row.extra", in: alphabetBindings)
+                && CommandBarRowShortcuts.decode(CommandBarRowShortcuts.encode(alphabetBindings))
+                    == alphabetBindings,
+               "26 app shortcuts fit with room left for other commands")
         var full: [String: GlobalShortcut] = [:]
         for index in 0..<CommandBarRowShortcuts.limit {
             full["row.\(index)"] = GlobalShortcut(keyCode: Int64(index), modifiers: [.control])
@@ -2064,5 +2076,49 @@ enum CommandBarTerminationContract {
         // A regression may only deliver after leaving the modal mode; drain
         // that reply before fixture cleanup while retaining the failed verdict.
         awaitReply(modalApp)
+    }
+}
+
+enum CommandBarAppSortContract {
+    static func run(_ suite: TestSuite) {
+        typealias Row = (key: String, title: String)
+        let rows: [Row] = [("mail", "Mail"), ("app10", "App 10"), ("app2", "App 2"),
+                           ("safari", "Safari"), ("notes", "Notes")]
+        let aliases = ["safari": "web", "mail": "inbox", "notes": ""]
+        let shortcuts = ["notes": GlobalShortcut(keyCode: 45, modifiers: [.option, .command]),
+                         "mail": GlobalShortcut(keyCode: 11, modifiers: [.option, .command])]
+        let pins: Set<String> = ["safari", "app2"]
+        func order(_ column: CommandBarAppSort.Column, ascending: Bool = true) -> [String] {
+            CommandBarAppSort.sorted(rows, by: column, ascending: ascending,
+                                     title: \.title, key: \.key, aliases: aliases,
+                                     shortcuts: shortcuts, pins: pins).map(\.key)
+        }
+
+        suite.expect(order(.name) == ["app2", "app10", "mail", "notes", "safari"],
+                     "the name column keeps the numeric-aware order the table always had")
+        suite.expect(order(.name, ascending: false) == ["safari", "notes", "mail", "app10", "app2"],
+                     "the name column can be reversed")
+        let byShortcut = order(.shortcut)
+        suite.expect(Set(byShortcut.prefix(2)) == ["mail", "notes"]
+                        && Array(byShortcut.suffix(3)) == ["app2", "app10", "safari"],
+                     "assigned shortcuts come first and unassigned rows follow by name")
+        let reversedShortcut = order(.shortcut, ascending: false)
+        suite.expect(Array(reversedShortcut.prefix(2).reversed()) == Array(byShortcut.prefix(2))
+                        && Array(reversedShortcut.suffix(3)) == ["app2", "app10", "safari"],
+                     "reversing the shortcut column keeps unassigned rows at the bottom")
+        suite.expect(order(.alias) == ["mail", "safari", "app2", "app10", "notes"],
+                     "aliases sort by text, and an empty alias counts as none")
+        suite.expect(order(.alias, ascending: false) == ["safari", "mail", "app2", "app10", "notes"],
+                     "reversing the alias column keeps rows without one at the bottom")
+        suite.expect(order(.pinned) == ["app2", "safari", "app10", "mail", "notes"],
+                     "pinned rows come first, each group ordered by name")
+        suite.expect(order(.pinned, ascending: false) == ["app10", "mail", "notes", "app2", "safari"],
+                     "reversing the pinned column puts unpinned rows first")
+        let same = GlobalShortcut(keyCode: 11, modifiers: [.command])
+        let tied = CommandBarAppSort.sorted(rows, by: .shortcut, ascending: false,
+                                            title: \.title, key: \.key, aliases: [:],
+                                            shortcuts: ["safari": same, "mail": same], pins: [])
+        suite.expect(tied.prefix(2).map(\.key) == ["mail", "safari"],
+                     "equal shortcuts fall back to the name in either direction")
     }
 }

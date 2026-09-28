@@ -14,10 +14,11 @@
 "NSCameraUsageDescription" = "Vorssaint, kameranızı yalnızca açtığınız önizleme penceresinde gösterir; böylece aramadan önce nasıl göründüğünüzü kontrol edebilirsiniz. Hiçbir şey kaydedilmez veya Mac'inizden çıkmaz.";
 
 /* macOS Downloads folder permission prompt. */
-"NSDownloadsFolderUsageDescription" = "Vorssaint, başlattığınız deşifre metinlerini buraya kaydeder ve yalnızca seçtiğiniz doğrulanmış WhatsApp dosyalarını incelemek, düzenlemek veya Çöp Sepeti'ne taşımak için yerel meta verileri denetler.";
+"NSDownloadsFolderUsageDescription" = "Vorssaint, başlattığınız deşifre metinlerini buraya kaydeder ve yalnızca seçtiğiniz doğrulanmış WhatsApp dosyalarını incelemek, düzenlemek veya Çöp Sepeti'ne taşımak için yerel meta verileri denetler. Ekran görüntülerinizi buraya kaydediyorsanız Temizlik unutulan ekran görüntülerini de arar.";
+
 /* macOS user-selected organizer destination prompts. */
-"NSDesktopFolderUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
-"NSDocumentsFolderUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
-"NSNetworkVolumesUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
-"NSRemovableVolumesUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için.";
+"NSDesktopFolderUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için. Ekran görüntülerinizi buraya kaydediyorsanız Temizlik unutulan ekran görüntülerini de arar.";
+"NSDocumentsFolderUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için. Ekran görüntülerinizi buraya kaydediyorsanız Temizlik unutulan ekran görüntülerini de arar.";
+"NSNetworkVolumesUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için. Ekran görüntülerinizi buraya kaydediyorsanız Temizlik unutulan ekran görüntülerini de arar.";
+"NSRemovableVolumesUsageDescription" = "Vorssaint buradaki bir klasörü yalnızca siz seçtiğinizde kullanır: verdiğiniz bir dosyayı deşifre edip metni kaydetmek ya da doğrulanmış WhatsApp indirmelerini düzenlemek için. Ekran görüntülerinizi buraya kaydediyorsanız Temizlik unutulan ekran görüntülerini de arar.";
 "NSCalendarsFullAccessUsageDescription" = "Yaklaşan randevularınızı ekranın üst kısmında gösterir. Takvim etkinlikleri bu Mac’te kalır.";

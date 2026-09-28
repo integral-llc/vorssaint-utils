@@ -100,6 +100,7 @@ extension FeatureStrings {
         case .tr: return .tr
         case .ru: return .ru
         case .es: return .es
+        case .sk: return .sk
         case .de: return .de
         case .fr: return .fr
         case .it: return .it
@@ -108,6 +109,7 @@ extension FeatureStrings {
         case .zhHans: return .zhHans
         case .zhTW: return .zhTW
         case .zhHK: return .zhHK
+        case .uk: return .uk
         }
     }
 }
@@ -376,6 +378,59 @@ extension YouTubeTranscriberStrings {
         failureCancelled: "Parado.",
         failureHelperFailedFormat: "%@ se detuvo con el código %lld. El registro tiene el detalle.",
         failureUnknown: "Algo salió mal. El registro tiene el detalle."
+    )
+
+    static let sk = YouTubeTranscriberStrings(
+        pageTitle: "Prepis",
+        hubDescription: "Premení odkaz na video alebo súbor, ktorý sem pretiahnete, na textový prepis.",
+        sourceLabel: "Odkaz na video alebo súbor",
+        sourcePlaceholder: "Vložte odkaz alebo pretiahnite zvukový či video súbor",
+        start: "Prepísať",
+        cancel: "Zastaviť",
+        openTranscript: "Otvoriť prepis",
+        showInFinder: "Zobraziť vo Finderi",
+        copyTranscript: "Kopírovať prepis",
+        phaseReadingTitle: "Číta sa názov",
+        phaseDownloading: "Sťahuje sa zvuk",
+        phaseMeasuring: "Meria sa zvuk",
+        phaseUploading: "Odosiela sa",
+        phaseTranscribing: "Prepisuje sa",
+        phaseFinished: "Hotovo",
+        locationLabel: "Prepisovať",
+        locationLocal: "Na tomto Macu",
+        locationRemote: "Na vlastnom serveri",
+        remoteHostLabel: "Server",
+        remoteHostPlaceholder: "whisper.priklad.sk",
+        remoteHostCaption: "Váš vlastný server whisper.cpp. Bez uvedenej schémy sa pripája cez https, takže zvuk necestuje nezašifrovane.",
+        keepAudio: "Ponechať zvukový súbor",
+        keepAudioCaption: "Extrahovaný zvuk sa vymaže hneď po zapísaní prepisu.",
+        outputFolder: "Uložiť do",
+        outputFolderCaption: "Prepisy sa ukladajú do „Stiahnuté“, ak nevyberiete iný priečinok.",
+        helpersSection: "Pomocné nástroje",
+        helpersMissingFormat: "Chýba: %@. Prepis ich potrebuje.",
+        helpersReady: "Všetky pomocné nástroje sú nainštalované.",
+        updateButton: "Aktualizovať yt-dlp",
+        updateChecking: "Kontroluje sa…",
+        updateUpToDateFormat: "yt-dlp %@ je už najnovšia verzia.",
+        updateInstalledFormat: "yt-dlp aktualizovaný na %@.",
+        updateFailed: "Aktualizáciu sa nepodarilo nainštalovať.",
+        updateCaption: "yt-dlp prestane fungovať, keď stránka zmení svoj prehrávač. Aktualizácia nainštaluje zostavenie, ktoré Vorssaint nepodpísal a macOS nenotarizoval.",
+        failureHelperMissingFormat: "Pomocný nástroj %@ nie je nainštalovaný.",
+        failureHelperStale: "Stránka zmenila svoj prehrávač a nainštalovaná yt-dlp jej nestíha. Zvyčajne pomôže aktualizácia.",
+        failureVideoUnavailable: "Toto video už neexistuje.",
+        failureVideoPrivate: "Toto video je súkromné.",
+        failureMembersOnly: "Toto video vyžaduje platené členstvo v kanáli.",
+        failureAgeRestricted: "Toto video vyžaduje prihlásenie do účtu pre dospelých.",
+        failureGeoBlocked: "Toto video nie je dostupné vo vašej krajine.",
+        failureLiveNotFinished: "Tento prenos ešte neskončil.",
+        failureNetwork: "Stránku sa nepodarilo dosiahnuť.",
+        failureNotMedia: "Tento súbor neobsahuje zvuk, ktorý dokáže Vorssaint prečítať.",
+        failureDiskFull: "Na disku už nie je miesto.",
+        failureRemoteUnreachable: "Váš server sa nepodarilo dosiahnuť.",
+        failureRemoteRejectedFormat: "Váš server odpovedal kódom %lld.",
+        failureCancelled: "Zastavené.",
+        failureHelperFailedFormat: "%@ sa zastavil s kódom %lld. Podrobnosti nájdete v protokole.",
+        failureUnknown: "Niečo sa pokazilo. Podrobnosti nájdete v protokole."
     )
 
     static let de = YouTubeTranscriberStrings(
@@ -800,5 +855,58 @@ extension YouTubeTranscriberStrings {
         failureCancelled: "已停止。",
         failureHelperFailedFormat: "%@ 以代碼 %lld 結束。詳情喺記錄裡面。",
         failureUnknown: "出咗少少問題。詳情喺記錄裡面。"
+    )
+
+    static let uk = YouTubeTranscriberStrings(
+        pageTitle: "Розшифрування",
+        hubDescription: "Перетворює посилання на відео або перетягнутий сюди файл на текстову розшифровку.",
+        sourceLabel: "Посилання на відео або файл",
+        sourcePlaceholder: "Вставте посилання або перетягніть аудіо- чи відеофайл",
+        start: "Розшифрувати",
+        cancel: "Зупинити",
+        openTranscript: "Відкрити розшифровку",
+        showInFinder: "Показати у Finder",
+        copyTranscript: "Копіювати розшифровку",
+        phaseReadingTitle: "Читання назви",
+        phaseDownloading: "Завантаження звуку",
+        phaseMeasuring: "Вимірювання звуку",
+        phaseUploading: "Вивантаження",
+        phaseTranscribing: "Розшифрування",
+        phaseFinished: "Готово",
+        locationLabel: "Розшифровувати",
+        locationLocal: "На цьому Mac",
+        locationRemote: "На власному сервері",
+        remoteHostLabel: "Сервер",
+        remoteHostPlaceholder: "whisper.example.com",
+        remoteHostCaption: "Ваш власний сервер whisper.cpp. Без указаної схеми з’єднання йде через https, тому звук не передається у відкритому вигляді.",
+        keepAudio: "Залишати аудіофайл",
+        keepAudioCaption: "Видобутий звук видаляється одразу після запису розшифровки.",
+        outputFolder: "Зберігати в",
+        outputFolderCaption: "Розшифровки потрапляють у «Завантаження», якщо не вибрати іншу папку.",
+        helpersSection: "Допоміжні програми",
+        helpersMissingFormat: "Не вистачає: %@. Вони потрібні для розшифрування.",
+        helpersReady: "Усі допоміжні програми встановлено.",
+        updateButton: "Оновити yt-dlp",
+        updateChecking: "Перевірка…",
+        updateUpToDateFormat: "yt-dlp %@ уже найновіша версія.",
+        updateInstalledFormat: "yt-dlp оновлено до %@.",
+        updateFailed: "Не вдалося встановити оновлення.",
+        updateCaption: "yt-dlp перестає працювати, коли сайт змінює свій програвач. Оновлення встановлює збірку, яку Vorssaint не підписував, а macOS не нотаризувала.",
+        failureHelperMissingFormat: "Допоміжна програма %@ не встановлена.",
+        failureHelperStale: "Сайт змінив свій програвач, і встановлена yt-dlp не встигає за ним. Зазвичай допомагає оновлення.",
+        failureVideoUnavailable: "Цього відео вже немає.",
+        failureVideoPrivate: "Це відео приватне.",
+        failureMembersOnly: "Це відео потребує платного членства в каналі.",
+        failureAgeRestricted: "Це відео потребує входу в обліковий запис для дорослих.",
+        failureGeoBlocked: "Це відео недоступне у вашій країні.",
+        failureLiveNotFinished: "Ця трансляція ще не закінчилася.",
+        failureNetwork: "Не вдалося з’єднатися із сайтом.",
+        failureNotMedia: "У цьому файлі немає звуку, який Vorssaint може прочитати.",
+        failureDiskFull: "На диску не залишилося місця.",
+        failureRemoteUnreachable: "Не вдалося з’єднатися з вашим сервером.",
+        failureRemoteRejectedFormat: "Ваш сервер відповів кодом %lld.",
+        failureCancelled: "Зупинено.",
+        failureHelperFailedFormat: "%@ зупинився з кодом %lld. Подробиці в журналі.",
+        failureUnknown: "Щось пішло не так. Подробиці в журналі."
     )
 }
