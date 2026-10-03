@@ -116,7 +116,6 @@ final class TranscriptionPipeline: @unchecked Sendable {
             arguments: [request.source,
                         "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
                         "--output", template, "--newline", "--no-playlist",
-                        "--no-progress-template",
                         "--ffmpeg-location", (ffmpeg as NSString).deletingLastPathComponent]
         ) { [weak self] line in
             guard let self else { return }
