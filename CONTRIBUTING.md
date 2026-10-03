@@ -83,18 +83,18 @@ CI and everyone else are unaffected, and the feature simply reports its helpers
 as missing.
 
 ```sh
-FFMPEG_DIR=/path/to/your/ffmpeg ./build.sh --transcriber
+./build.sh --transcriber
 ```
 
-That fetches `yt-dlp`, builds `whisper.cpp` with CMake, downloads the model into
+That fetches `yt-dlp`, `ffmpeg` and `ffprobe`, builds `whisper.cpp` with CMake, downloads the model into
 `~/Library/Application Support/Vorssaint/Models`, caches all of it under
 `build/.transcriber`, and stages and signs the binaries inside the bundle.
 
-`ffmpeg` and `ffprobe` are deliberately **not** downloaded. The macOS builds in
-general circulation are third-party rebuilds whose configure flags, and so whose
-licence, nobody here has established, and this app is redistributed under
-GPL-3.0-or-later and signed under a public Developer ID. Point `FFMPEG_DIR` at a
-pair whose provenance you know before shipping anything built this way.
+`ffmpeg` and `ffprobe` are Martin Riedl's static arm64 builds, configured with
+`--enable-gpl --enable-version3` and so GPL-3.0, which this app's licence
+accepts. The build refuses any `ffmpeg` configured with `--enable-nonfree`. Set
+`FFMPEG_DIR` to use your own pair instead. `just deploy` always builds with
+`--transcriber`.
 
 The Update button in the transcriber's settings installs a `yt-dlp` that
 Vorssaint did not sign and Apple did not notarize, into Application Support

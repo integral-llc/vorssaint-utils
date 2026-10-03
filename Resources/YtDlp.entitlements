@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- yt-dlp_macos is a PyInstaller build: it unpacks a Python framework
+	     signed by the yt-dlp team into a temp folder and dlopens it. Under the
+	     hardened runtime, library validation refuses that framework because
+	     its Team ID differs from ours, and yt-dlp dies before it starts. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

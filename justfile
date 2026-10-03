@@ -30,7 +30,7 @@ deploy *level:
     VORSSAINT_INSTALL_DIR="{{install_dir}}" \
     VORSSAINT_MARKETING_VERSION="$version" \
     VORSSAINT_BUILD_NUMBER="$build" \
-        ./build.sh --install
+        ./build.sh --install --transcriber
     # Only a deploy that landed moves the baseline, so a failed build leaves
     # the next attempt numbered the same.
     Tools/deploy-version.sh record "$version" "$build" "$tree"

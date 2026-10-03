@@ -89,6 +89,7 @@ NOW_PLAYING_ADAPTER_ID="$APP_BUNDLE_ID.now-playing"
 NOW_PLAYING_ADAPTER="libVorssaintNowPlaying.dylib"
 TARGET="arm64-apple-macosx14.0"
 ENTITLEMENTS="Resources/Vorssaint.entitlements"
+YTDLP_ENTITLEMENTS="Resources/YtDlp.entitlements"
 LEGACY_IDENTITY="Vorssaint Utils Signing"
 
 # The identity a hardened-runtime signature is made with: the one the caller
@@ -192,8 +193,10 @@ sign_transcriber_helpers() {
     for helper in "$bundle/Contents/Helpers/"*(N); do
         [[ -f "$helper" ]] || continue
         if [[ -n "$runtime" ]]; then
+            local entitlements=()
+            [[ "${helper:t}" == yt-dlp ]] && entitlements=(--entitlements "$YTDLP_ENTITLEMENTS")
             codesign_with_timestamp_retry --force --strip-disallowed-xattrs \
-                --options runtime --timestamp --sign "$identity" "$helper"
+                --options runtime --timestamp "${entitlements[@]}" --sign "$identity" "$helper"
         else
             /usr/bin/codesign --force --strip-disallowed-xattrs --sign "$identity" "$helper"
         fi
@@ -706,15 +709,28 @@ fetch_transcriber_helpers() {
         chmod +x "$TRANSCRIBER_CACHE/yt-dlp"
     fi
 
-    # ffmpeg and ffprobe are not fetched. The builds in general circulation are
-    # third-party rebuilds whose configure flags, and therefore whose licence,
-    # nobody here has established, and this app is redistributed under GPL-3.0.
-    # Point the build at your own pair once you know what they are.
+    # Martin Riedl's static arm64 builds link only system frameworks, so they
+    # run from inside the bundle without Homebrew. FFMPEG_DIR overrides them.
     if [[ -n "${FFMPEG_DIR:-}" ]]; then
         cp "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe" "$TRANSCRIBER_CACHE/"
         chmod +x "$TRANSCRIBER_CACHE/ffmpeg" "$TRANSCRIBER_CACHE/ffprobe"
     else
-        echo "  ffmpeg/ffprobe: set FFMPEG_DIR to a pair you trust; skipping"
+        local tool
+        for tool in ffmpeg ffprobe; do
+            [[ -x "$TRANSCRIBER_CACHE/$tool" ]] && continue
+            echo "  fetching $tool…"
+            curl -fL --progress-bar -o "$TRANSCRIBER_CACHE/$tool.zip" \
+                "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/$tool.zip"
+            unzip -o -q "$TRANSCRIBER_CACHE/$tool.zip" "$tool" -d "$TRANSCRIBER_CACHE"
+            rm -f "$TRANSCRIBER_CACHE/$tool.zip"
+            chmod +x "$TRANSCRIBER_CACHE/$tool"
+        done
+    fi
+    # The app is GPL-3.0-or-later; a nonfree ffmpeg cannot be redistributed
+    # with it at all, whoever built it.
+    if "$TRANSCRIBER_CACHE/ffmpeg" -hide_banner -buildconf 2>/dev/null | grep -q -- --enable-nonfree; then
+        echo "✗ $TRANSCRIBER_CACHE/ffmpeg is built with --enable-nonfree" >&2
+        exit 1
     fi
 
     if [[ ! -x "$TRANSCRIBER_CACHE/whisper-cli" ]]; then
