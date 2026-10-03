@@ -37,11 +37,13 @@ struct NotchRestingDateText: View {
 /// The resting island while it shows the date, alone or after the battery.
 struct NotchRestingDateView: View {
     @ObservedObject var service: NotchService
+    /// Another display's strip, when the island shows on every display.
+    var displayGeometry: NotchGeometry? = nil
 
     private var showsBattery: Bool { service.idleContent == .battery }
 
     var body: some View {
-        let geometry = service.geometry
+        let geometry = displayGeometry ?? service.geometry
         if let width = geometry.restingRowWidth {
             // Alone the date is centered; after the battery it keeps to the right.
             HStack(spacing: NotchLayout.restingItemGap) {
