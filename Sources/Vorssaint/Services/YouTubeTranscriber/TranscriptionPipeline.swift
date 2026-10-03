@@ -42,12 +42,18 @@ final class TranscriptionPipeline: @unchecked Sendable {
         runner.reset()
         logLock.withLock { log = [] }
 
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
         let audio: String
         if YouTubeTranscriberSupport.isLocalFile(request.source) {
-            audio = expanded(request.source)
-            guard FileManager.default.isReadableFile(atPath: audio) else {
+            let source = expanded(request.source)
+            guard FileManager.default.isReadableFile(atPath: source) else {
                 return fail(.notMedia)
             }
+            guard let extracted = extractAudio(from: source, into: scratch) else { return }
+            audio = extracted
         } else {
             guard let downloaded = downloadAudio(request) else { return }
             audio = downloaded
@@ -137,6 +143,41 @@ final class TranscriptionPipeline: @unchecked Sendable {
             return nil
         }
         return produced
+    }
+
+    /// whisper-cli decodes bare audio only, so a dragged-in video would fail at
+    /// the last step. Every local file goes through ffmpeg into a scratch WAV
+    /// named after the source: the transcript keeps the source's name and the
+    /// source's own folder gets nothing written into it.
+    private func extractAudio(from source: String, into directory: URL) -> String? {
+        guard let ffmpeg = TranscriberHelpers.path(for: .ffmpeg) else {
+            fail(.helperMissing(.ffmpeg))
+            return nil
+        }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            fail(.diskFull)
+            return nil
+        }
+        let output = directory
+            .appendingPathComponent(URL(fileURLWithPath: source).deletingPathExtension().lastPathComponent)
+            .appendingPathExtension("wav").path
+
+        onEvent(.phase(.measuringAudio))
+        let status = runner.run(
+            executable: ffmpeg,
+            arguments: ["-nostdin", "-v", "error", "-y", "-i", source,
+                        "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", output]
+        ) { [weak self] line in
+            self?.record(line)
+        }
+        if runner.isCancelled { fail(.cancelled); return nil }
+        guard status == 0 else {
+            fail(.notMedia)
+            return nil
+        }
+        return output
     }
 
     private func probeDuration(of path: String) -> Double {
