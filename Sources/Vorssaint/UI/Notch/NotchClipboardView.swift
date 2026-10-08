@@ -53,8 +53,15 @@ struct NotchClipboardView: View {
                     pinnedOnly.toggle()
                 }
                 NotchIconButton(symbol: "trash", title: text.clearRecent) {
-                    history.clearRecent()
-                    copiedID = nil
+                    let ids = Set(history.recentEntries.map(\.id))
+                    DispatchQueue.main.async {
+                        guard NSAlert.confirmAboveIsland(String(format: text.clearRecentConfirmFormat, ids.count),
+                                                         message: text.clearRecentConfirmMessage,
+                                                         action: text.clearRecent, destructive: true,
+                                                         cancel: text.cancel) else { return }
+                        history.clearRecent(ids)
+                        copiedID = nil
+                    }
                 }
                 .disabled(history.recentEntries.isEmpty)
                 NotchIconButton(symbol: "arrow.up.forward.app", title: text.title) {
@@ -106,6 +113,12 @@ struct NotchClipboardView: View {
                     }
                     .scrollIndicators(.automatic)
                     .onChange(of: highlightedID) { _, id in
+                        guard let id else { return }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { proxy.scrollTo(id) }
+                    }
+                    // A copied recent entry moves to the top, so the list
+                    // follows it and the tick stays in view.
+                    .onChange(of: copiedID) { _, id in
                         guard let id else { return }
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { proxy.scrollTo(id) }
                     }
@@ -235,6 +248,10 @@ struct NotchClipboardView: View {
     }
 
     private func copy(_ entry: ClipboardHistoryEntry) {
+        // A copied recent entry moves to the top, so the second click of a
+        // double click would copy whichever entry took its place.
+        if let event = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp].contains(event.type),
+           event.clickCount > 1 { return }
         history.copy(entry) { copied in
             if copied {
                 copiedID = entry.id

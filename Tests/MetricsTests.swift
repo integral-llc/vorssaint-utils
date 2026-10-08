@@ -18,6 +18,8 @@ struct MetricsTests {
                 MetricsFeatureTests.run(suite)
                 ProcessNameContract.run(suite)
                 SystemMonitorCPUTests.run(suite)
+                SystemMonitorPlanTests.run(suite)
+                SystemSectionBreakdownTests.run(suite)
             }),
             ("clipboard", { ClipboardFeatureTests.run(suite) }),
             ("pointer-input", {
@@ -57,6 +59,7 @@ struct MetricsTests {
             ("overlays", { OverlayPanelTests.run(suite) }),
             ("updates", {
                 UpdateFeatureTests.run(suite)
+                LaunchAtLoginSettingsTests.run(suite)
                 PostUpdateStatusItemRecoveryTests.run(suite)
                 UpdateHighlightsTests.run(suite)
                 UpdateIntroFlowTests.run(suite)
@@ -68,6 +71,7 @@ struct MetricsTests {
                 ScreenshotFeatureTests.run(suite)
                 ScreenshotShareCompletionTests.run(suite)
                 ScreenshotScrollingCaptureTests.run(suite)
+                ScreenshotAttachedCaptureTests.run(suite)
                 ScreenCaptureToolPickerTests.run(suite)
             }),
             ("recorder", {
@@ -81,6 +85,7 @@ struct MetricsTests {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)
                 NotchCapsuleTests.run(suite)
+                PlainTextLineMoverTests.run(suite)
                 NotchVolumeKeyTests.run(suite)
                 NotchSettingsTabRowTests.run(suite)
             }),
@@ -98,6 +103,7 @@ struct MetricsTests {
                 SettingsFeatureTests.run(suite)
                 SettingsWindowTests.run { suite.expect($0, $1) }
                 NotchSettingsChoiceTests.run(suite)
+                MonitorTokenTests.run(suite)
             }),
             ("display-restoration", {
                 DisplayRestorationTests.run(suite)
@@ -145,11 +151,14 @@ struct MetricsTests {
                 UninstallerFlowTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
+            ("force-quit", { ProcessForceQuitTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
             ("dock-autohide", {
+                DockPreviewPositionTests.run(suite)
                 DockAutohideHoldTests.run(suite)
                 DockPreviewFrameRestorationTests.run(suite)
             }),
+            ("spaces-order", { SpacesOrderTests.run(suite) }),
             ("switcher", {
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)

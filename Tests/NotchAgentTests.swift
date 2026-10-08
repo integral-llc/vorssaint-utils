@@ -16,8 +16,10 @@ enum NotchAgentTests {
         pricing(suite)
         claudeParsing(suite)
         claudeTurns(suite)
+        offlineTurns(suite)
         codexParsing(suite)
         openCodeParsing(suite)
+        CopilotAgentTests.run(suite)
         timestamps(suite)
         summary(suite)
         AgentUsageSummaryCacheTests.run(suite)
@@ -69,8 +71,10 @@ enum NotchAgentTests {
         suite.expectClose(opus.cost ?? -1, 0.132, "Opus 5.5 bills input, both cache writes, cache reads and output",
                           tol: 0.000001)
         suite.expectClose(opus.savings, 100_000 * (4 - 0.2) / 1_000_000, "cache reads save the input price they avoid")
-        suite.expect(AgentPricing.price(for: "claude-opus-5-5")?.input == 4 && AgentPricing.price(for: "claude-opus-5")?.input == 5,
-                     "a point release never inherits the price of the version it extends")
+        suite.expect(AgentPricing.price(for: "claude-opus-5-5")?.input == 4
+                        && AgentPricing.price(for: "claude-opus-5.5")?.input == 4
+                        && AgentPricing.price(for: "claude-opus-5")?.input == 5,
+                     "point releases, including Copilot's dotted spelling, keep their own price")
         suite.expect(AgentPricing.price(for: "claude-opus-4-1-20250805")?.input == 15
                         && AgentPricing.price(for: "claude-opus-4-5-20251101")?.input == 5
                         && AgentPricing.price(for: "us.anthropic.claude-sonnet-4-5-20250929-v1:0")?.input == 3
@@ -275,6 +279,104 @@ enum NotchAgentTests {
                      "dropping old history keeps later lookups consistent")
     }
 
+    private static func offlineTurns(_ suite: TestSuite) {
+        let now = AgentTimestamp.parse("2026-09-21T23:45:00.000Z")!
+        let drop = AgentTimestamp.parse("2026-09-21T23:43:00.000Z")!
+        let grace = AgentUsageStore.offlineGrace
+        var state = AgentLogState()
+        let store = AgentUsageStore()
+        store.reportsTransitions = true
+        func feed(_ data: Data) -> [AgentUsageEvent] {
+            store.apply(AgentLogParser.parseClaude(data, state: &state, now: now), file: "main", provider: .claude,
+                        tracksTurns: true, modified: now, now: now)
+        }
+        var codexState = AgentLogState()
+        func codex(_ json: String) -> [AgentUsageEvent] {
+            store.apply(AgentLogParser.parseCodex(line(json), state: &codexState, now: now), file: "rollout",
+                        provider: .codex, tracksTurns: true, modified: now, now: now)
+        }
+        func finished(_ events: [AgentUsageEvent], _ wanted: AgentProvider) -> Bool {
+            events.contains { if case .finished(let provider, _, _, _, _) = $0 { provider == wanted } else { false } }
+        }
+        _ = feed(claudeUser())
+        _ = feed(claudeAssistant(stop: "tool_use"))
+        _ = codex(#"{"timestamp":"2026-09-21T23:41:00.000Z","type":"event_msg","payload":{"type":"task_started"}}"#)
+        _ = store.apply([.turnBegan(now)], file: "events", provider: .copilot, tracksTurns: true, modified: now, now: now)
+        _ = store.apply([.turnBegan(now)], file: "db#s1", provider: .opencode, tracksTurns: true, modified: now, now: now)
+        suite.expect(!store.closeOfflineTurns(since: drop, lasting: grace - 1) && store.live.count == 4,
+                     "a short drop, as when the Mac changes networks, ends no turn")
+        suite.expect(store.closeOfflineTurns(since: drop, lasting: grace)
+                        && Set(store.live.map(\.provider)) == [.codex, .copilot, .opencode],
+                     "a Claude turn ends once the Mac stays offline, and other agents' turns are left alone")
+        suite.expect(finished(codex(#"{"timestamp":"2026-09-21T23:44:50.000Z","type":"event_msg","payload":{"type":"task_complete","duration_ms":230000}}"#), .codex),
+                     "a Codex task that goes on through a long drop still reports its finish")
+        suite.expect(feed(claudeAssistant(id: "msg_2", request: "req_2", stop: "tool_use", time: "2026-09-21T23:44:00.000Z")).isEmpty
+                        && store.live.first { $0.provider == .claude }?.started == AgentTimestamp.parse("2026-09-21T23:44:00.000Z"),
+                     "a retry that gets through opens a turn of its own")
+        let retried = store.live.first { $0.provider == .claude }
+        suite.expect(retried?.tokens.total == AgentTokens(input: 2, cacheWrite: 17_218, cacheRead: 43_134, output: 225).total
+                        && (retried?.cost ?? 0) > 0,
+                     "the reply that gets through counts toward the turn it opens")
+        suite.expect(!store.closeOfflineTurns(since: drop, lasting: grace + 60) && store.live.contains { $0.provider == .claude },
+                     "a turn whose model replied since the drop, as a model on the Mac does, keeps working offline")
+        store.closeIdleTurns(now: now, after: 0)
+        store.closeOfflineTurns(since: AgentTimestamp.parse("2026-09-21T23:44:10.000Z")!, lasting: grace)
+        _ = feed(claudeAssistant(id: "msg_3", request: "req_3", stop: "tool_use", time: "2026-09-21T23:44:30.000Z"))
+        suite.expect(store.live.first { $0.provider == .claude }?.started == AgentTimestamp.parse("2026-09-21T23:44:30.000Z"),
+                     "a quiet turn ends offline too, so a later retry does not take it up again")
+
+        func call(_ tool: String, _ id: String) -> Data {
+            line(#"{"type":"assistant","timestamp":"2026-09-21T23:44:40.000Z","sessionId":"s1","message":{"id":"msg_\#(id)","model":"<synthetic>","stop_reason":"tool_use","content":[{"type":"tool_use","id":"\#(id)","name":"\#(tool)","input":{}}]}}"#)
+        }
+        func result(_ id: String) -> Data {
+            line(#"{"type":"user","sessionId":"s1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"\#(id)","content":"ok"}]}}"#)
+        }
+        // After the last reply, so only the command keeps the turn.
+        let late = AgentTimestamp.parse("2026-09-21T23:44:45.000Z")!
+        _ = feed(call("WebFetch", "toolu_web"))
+        _ = feed(call("Bash", "toolu_sh"))
+        suite.expect(state.runningCommands == ["toolu_sh"], "only a shell command counts as work on the Mac")
+        suite.expect(!store.closeOfflineTurns(since: late, lasting: grace, keeping: ["main"])
+                        && store.live.contains { $0.provider == .claude },
+                     "a turn waiting on a shell command keeps working offline")
+        _ = feed(result("toolu_web"))
+        suite.expect(state.runningCommands == ["toolu_sh"], "another tool's result leaves the command running")
+        _ = feed(result("toolu_sh"))
+        suite.expect(state.runningCommands.isEmpty, "the command's result means the next step needs the network")
+        suite.expect(store.closeOfflineTurns(since: late, lasting: grace) && !store.live.contains { $0.provider == .claude },
+                     "once its command is done, a turn ends offline")
+        _ = feed(call("Bash", "toolu_left"))
+        _ = feed(line(#"{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}"#))
+        _ = feed(claudeUser(time: "2026-09-21T23:44:50.000Z"))
+        suite.expect(state.runningCommands.isEmpty, "a new prompt forgets a command the last turn left")
+
+        // A session killed in the middle of a command leaves its turn open
+        // in the log; resumed there, its next prompt reads as work going on.
+        var killed = AgentLogState()
+        for data in [claudeUser(), call("Bash", "toolu_killed"), claudeUser(meta: true),
+                     line(#"{"type":"user","isSidechain":true,"sessionId":"s1","message":{"role":"user","content":"Explore the repo"}}"#)] {
+            _ = AgentLogParser.parseClaude(data, state: &killed, now: now)
+        }
+        suite.expect(killed.runningCommands == ["toolu_killed"], "a meta line or a subagent's prompt leaves a command running")
+        _ = AgentLogParser.parseClaude(claudeUser("Go on", time: "2026-09-21T23:44:55.000Z"), state: &killed, now: now)
+        suite.expect(killed.turnOpen && killed.runningCommands.isEmpty,
+                     "a prompt typed into a turn left open forgets the command a killed session left")
+
+        let blip = AgentUsageStore()
+        blip.reportsTransitions = true
+        var blipState = AgentLogState()
+        func feedBlip(_ data: Data) -> [AgentUsageEvent] {
+            blip.apply(AgentLogParser.parseClaude(data, state: &blipState, now: now), file: "blip", provider: .claude,
+                       tracksTurns: true, modified: now, now: now)
+        }
+        _ = feedBlip(claudeUser())
+        _ = feedBlip(claudeAssistant(stop: "tool_use"))
+        blip.closeOfflineTurns(since: drop, lasting: grace - 1)
+        suite.expect(finished(feedBlip(claudeAssistant(id: "msg_9", request: "req_9", stop: "end_turn",
+                                                       time: "2026-09-21T23:44:55.000Z")), .claude),
+                     "a turn that reconnects after a short drop still reports its finish")
+    }
+
     private static func claudeTurns(_ suite: TestSuite) {
         let now = AgentTimestamp.parse("2026-09-21T23:45:00.000Z")!
         var state = AgentLogState()
@@ -315,6 +417,24 @@ enum NotchAgentTests {
         _ = feed(claudeUser(#"<command-name>/model</command-name>"#))
         _ = feed(line(#"{"type":"user","message":{"content":"<local-command-stdout>Set model</local-command-stdout>"}}"#))
         suite.expect(store.live.isEmpty, "a local command never leaves a turn working")
+        _ = feed(claudeUser())
+        _ = feed(claudeAssistant(id: "msg_5", request: "req_5", stop: "tool_use", time: "2026-09-21T23:40:10.000Z"))
+        let structured = feed(line(#"{"type":"user","timestamp":"2026-09-21T23:40:15.000Z","sessionId":"s1","message":{"role":"user","content":[{"type":"tool_result","content":"Structured output provided successfully"}]},"toolUseResult":"Structured output provided successfully","toolEndsTurn":true}"#))
+        suite.expect(store.live.isEmpty && structured.contains { if case .finished = $0 { true } else { false } },
+                     "a tool that ends the turn finishes it without waiting for a reply")
+        suite.expect(feed(line(#"{"type":"user","timestamp":"2026-09-21T23:40:16.000Z","message":{"content":[{"type":"tool_result","content":"ok"}]},"toolEndsTurn":true}"#)).isEmpty
+                        && store.live.isEmpty, "a turn-ending tool result alone never opens a turn")
+        _ = feed(claudeUser())
+        _ = feed(claudeAssistant(id: "msg_6", request: "req_6", stop: "tool_use"))
+        _ = feed(line(#"{"type":"user","timestamp":"2026-09-21T23:43:00.000Z","message":{"content":[{"type":"tool_result","content":"\"toolEndsTurn\":true"}]},"toolEndsTurn":false}"#))
+        suite.expect(store.live.count == 1, "a tool result quoting the marker keeps the turn working")
+        // A subagent's own turn-ending tool, and a structured tool result
+        // that holds the marker deeper down, both leave the main turn open.
+        _ = feed(line(#"{"type":"user","isSidechain":true,"timestamp":"2026-09-21T23:43:01.000Z","message":{"content":[{"type":"tool_result","content":"done"}]},"toolEndsTurn":true}"#))
+        suite.expect(store.live.count == 1, "a subagent's turn-ending tool keeps the main turn working")
+        _ = feed(line(#"{"type":"user","timestamp":"2026-09-21T23:43:02.000Z","message":{"content":[{"type":"tool_result","content":"ok"}]},"toolUseResult":{"result":{"toolEndsTurn":true}}}"#))
+        suite.expect(store.live.count == 1, "a marker nested in a structured tool result keeps the turn working")
+        _ = feed(line(#"{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#))
         _ = feed(claudeUser())
         suite.expect(feed(claudeAssistant(id: "msg_4", request: "req_4", model: "<synthetic>", stop: "stop_sequence",
                                           time: "2026-09-21T23:44:40.000Z")).isEmpty && store.live.isEmpty,
@@ -2110,6 +2230,13 @@ enum NotchAgentTests {
                                                atLaunch: true)
         suite.expect(ended && relaunched.live.map(\.id) == ["/p/alive.jsonl"],
                      "at launch, a turn left open by a session that quit ends at once")
+
+        let copilot = AgentUsageStore()
+        copilot.apply([.turnBegan(start)], file: "/p/session/events.jsonl", provider: .copilot,
+                      tracksTurns: true, modified: start)
+        let stopped = copilot.closeEndedTurns(AgentSessionRegistry(ended: ["events"], listed: true), atLaunch: true)
+        suite.expect(!stopped && !copilot.showsClaudeTurn && copilot.live.map(\.id) == ["/p/session/events.jsonl"],
+                     "Claude process records never end Copilot work, including during startup")
     }
 
     private static func reading(_ suite: TestSuite) {
@@ -2136,12 +2263,68 @@ enum NotchAgentTests {
         suite.expect(lines == ["{\"c\":3}"], "a rewritten file is read from its start")
         suite.expect(!AgentLogCursor(path: "/x/s1/subagents/agent-1.jsonl", provider: .claude).tracksTurns
                         && AgentLogCursor(path: "/x/s1.jsonl", provider: .claude).tracksTurns
-                        && !AgentLogCursor(path: "/x/rollout-2026-09-21T08-17-14-a_b.jsonl", provider: .codex).tracksTurns,
+                        && !AgentLogCursor(path: "/x/rollout-2026-09-21T08-17-14-a_b.jsonl", provider: .codex).tracksTurns
+                        && AgentLogCursor(path: "/x/session-state/id/events.jsonl", provider: .copilot).tracksTurns,
                      "subagents and side threads never own a turn")
+        suite.expect(AgentLogRoot.all(home: folder).contains {
+            $0.provider == .copilot && $0.url.path == folder.appending(path: ".copilot/session-state").path
+        }, "GitHub Copilot session event logs are a discovered local root")
         let root = AgentLogRoot.canonical(folder)
         let found = AgentLogReader.discover([AgentLogRoot(provider: .codex, url: root)], since: .distantPast)
         suite.expect(found.map(\.path) == [root.appending(path: "session.jsonl").path] && found.first?.provider == .codex,
                      "log files are found under a root")
+        let copilotRoot = FileManager.default.temporaryDirectory
+            .appending(path: "vorss-copilot-logs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: copilotRoot) }
+        let copilotSession = copilotRoot.appending(path: "session-id")
+        let copilotWorkspace = copilotSession.appending(path: "workspace/nested")
+        try? FileManager.default.createDirectory(at: copilotWorkspace, withIntermediateDirectories: true)
+        let copilotEvents = copilotSession.appending(path: "events.jsonl")
+        FileManager.default.createFile(atPath: copilotEvents.path, contents: Data("{}\n".utf8))
+        FileManager.default.createFile(atPath: copilotWorkspace.appending(path: "events.jsonl").path,
+                                       contents: Data("{}\n".utf8))
+        let copilotFound = AgentLogReader.discover(
+            [AgentLogRoot(provider: .copilot, url: AgentLogRoot.canonical(copilotRoot))], since: .distantPast)
+        suite.expect(copilotFound.map(\.path) == [AgentLogRoot.canonical(copilotEvents).path],
+                     "Copilot discovery reads only each session event log and never descends into its workspace")
+        let filtered = copilotRoot.appending(path: "filtered.jsonl")
+        let filteredLines = [
+            #"{"type":"tool.execution_complete","data":{"content":"never decoded"}}"#,
+            #"{"type":"assistant.message","data":{"content":"\"type\":\"session.shutdown\""}}"#,
+            #"{"type":"assistant.turn_end","data":{"turnId":"0"}}"#,
+            #"{"type":"session.shutdown","data":{}}"#
+        ]
+        try? Data((filteredLines.joined(separator: "\n") + "\n").utf8).write(to: filtered)
+        let filteredCursor = AgentLogCursor(path: filtered.path, provider: .copilot)
+        var historyLines: [String] = []
+        AgentLogReader.readAppended(filteredCursor, including: AgentLogReader.copilotHistoryLine) {
+            historyLines.append(String(decoding: $0, as: UTF8.self))
+        }
+        suite.expect(historyLines == Array(filteredLines.suffix(3)),
+                     "Copilot's first pass keeps only session and live-turn structural lines")
+        let edgeLog = copilotRoot.appending(path: "edge-events.jsonl")
+        let edgeStart = #"{"type":"session.start","data":{"sessionId":"edge"}}"#
+        let edgeMiddle = #"{"id":"middle","type":"assistant.message","data":{"content":"done"}}"#
+        let edgeEnd = #"{"type":"session.shutdown","data":{}}"#
+        var edgeData = Data((edgeStart + "\n").utf8)
+        edgeData.append(Data(repeating: 0x78, count: AgentLogReader.chunkSize + 1))
+        edgeData.append(Data(("\n" + edgeMiddle + "\n").utf8))
+        edgeData.append(Data(repeating: 0x78, count: AgentLogReader.chunkSize + 1))
+        edgeData.append(Data(("\n" + edgeEnd + "\n").utf8))
+        try? edgeData.write(to: edgeLog)
+        let edgeCursor = AgentLogCursor(path: edgeLog.path, provider: .copilot)
+        var edgeLines: [String] = []
+        AgentLogReader.readCopilotHistory(edgeCursor) { edgeLines.append(String(decoding: $0, as: UTF8.self)) }
+        let appendedCheckpoint = #"{"type":"session.usage_checkpoint","data":{"totalPremiumRequests":1}}"#
+        if let handle = try? FileHandle(forWritingTo: edgeLog) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data((appendedCheckpoint + "\n").utf8))
+            try? handle.close()
+        }
+        var appendedLines: [String] = []
+        AgentLogReader.readAppended(edgeCursor) { appendedLines.append(String(decoding: $0, as: UTF8.self)) }
+        suite.expect(edgeLines == [edgeStart, edgeMiddle, edgeEnd] && appendedLines == [appendedCheckpoint],
+                     "large Copilot histories keep middle response activity, then continue with appended events")
         suite.expect(root.path.hasPrefix("/private/") && AgentLogRoot.canonical(folder.appending(path: "missing")).path
                         == folder.appending(path: "missing").path,
                      "roots are watched by the real path file events report, and a missing one keeps its name")
@@ -2348,8 +2531,10 @@ enum NotchAgentTests {
         suite.expect(NotchAgentSupport.cards(in: defaults) == [.trend, .spend, .limits, .live, .models, .resets],
                      "the saved order ignores unknown and repeated cards and appends new ones")
         defaults.set(false, forKey: DefaultsKey.notchAgentsCodex)
-        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .opencode], "an agent can be left out")
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .opencode, .copilot], "an agent can be left out")
         defaults.set(false, forKey: DefaultsKey.notchAgentsOpenCode)
+        suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude, .copilot], "OpenCode keeps its own preference")
+        defaults.set(false, forKey: DefaultsKey.notchAgentsCopilot)
         suite.expect(NotchAgentSupport.providers(in: defaults) == [.claude], "multiple agents can be left out")
         defaults.set("unknown", forKey: DefaultsKey.notchAgentsLimitFocus)
         suite.expect(NotchAgentSupport.limitFocus(in: defaults) == .mostUsed, "an unknown limit choice shows the most used")
@@ -2363,7 +2548,7 @@ enum NotchAgentTests {
                      "alerts follow their switches and a budget must be positive")
 
         let keys = [DefaultsKey.notchAgentsEnabled, DefaultsKey.notchAgentsClaude, DefaultsKey.notchAgentsCodex,
-                    DefaultsKey.notchAgentsOpenCode,
+                    DefaultsKey.notchAgentsOpenCode, DefaultsKey.notchAgentsCopilot,
                     DefaultsKey.notchAgentsCardOrder, DefaultsKey.notchAgentsHiddenCards, DefaultsKey.notchAgentsPeriod,
                     DefaultsKey.notchAgentsLimitDisplay, DefaultsKey.notchAgentsLimitFocus, DefaultsKey.notchAgentsLiveActivity, DefaultsKey.notchAgentsReadout,
                     DefaultsKey.notchAgentsFinishAlert, DefaultsKey.notchAgentsFinishMinimum, DefaultsKey.notchAgentsLimitAlert,
@@ -2381,14 +2566,19 @@ enum NotchAgentTests {
 
         let limits = NotchAgentTile(card: .limits, provider: .claude)
         let codex = NotchAgentTile(card: .limits, provider: .codex)
+        let copilot = NotchAgentTile(card: .limits, provider: .copilot)
         let spend = NotchAgentTile(card: .spend, provider: nil)
         let trend = NotchAgentTile(card: .trend, provider: nil)
-        suite.expect(NotchAgentSupport.tiles(cards: [.limits, .trend], providers: [.claude, .codex]) == [limits, codex, trend],
-                     "each agent gets its own limits card")
+        suite.expect(NotchAgentSupport.tiles(cards: [.limits, .trend], providers: [.claude, .codex, .copilot])
+                        == [limits, codex, trend] && !AgentProvider.copilot.reportsLimits
+                        && !NotchAgentSupport.tiles(cards: [.limits], providers: [.copilot]).contains(copilot),
+                     "only agents whose local logs report plan allowances get a limits card")
         let resets = NotchAgentTile(card: .resets, provider: .codex)
-        suite.expect(NotchAgentSupport.tiles(cards: [.resets, .spend], providers: [.claude, .codex]) == [resets, spend]
-                        && NotchAgentSupport.tiles(cards: [.resets, .spend], providers: [.claude]) == [spend],
+        suite.expect(NotchAgentSupport.tiles(cards: [.resets, .spend], providers: [.claude, .codex, .copilot]) == [resets, spend]
+                        && NotchAgentSupport.tiles(cards: [.resets, .spend], providers: [.claude, .copilot]) == [spend],
                      "the resets card belongs to Codex and leaves with it")
+        suite.expect(NotchAgentSupport.tiles(cards: [.limits, .resets, .spend], providers: [.copilot]) == [spend],
+                     "a Copilot-only dashboard never offers unavailable limits or Codex account resets")
         suite.expect(NotchAgentSupport.rows([limits, codex, spend, trend], width: 424) == [[limits, codex], [spend], [trend]]
                         && NotchAgentSupport.rows([limits, trend, codex], width: 424) == [[limits], [trend], [codex]],
                      "cards pair in reading order, and charts and lone cards take the row")

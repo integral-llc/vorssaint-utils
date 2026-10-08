@@ -75,7 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
         // Redo a launch at login registration the system lost. The stored
         // choice is the last thing the user expressed in the app; startup
-        // never turns the item off.
+        // never turns the item off. It runs off the main thread, since
+        // Service Management can stall while answering (issue #2539).
         LaunchAtLogin.repairAtStartup()
 
         // Switch back on any display a previous run left off. A run that ends
@@ -143,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             KeepAwakeManager.shared.activateOnLaunchIfNeeded()
         }
         FanControlService.recoverIfNeeded()
+        SpacesOrderHold.recoverIfNeeded()
         // One binding per feature: only available features are touched, so a
         // feature switched off in the hub never even instantiates here.
         FeatureRuntime.shared.syncAtLaunch()
@@ -521,13 +523,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                                         anchor: resolvePanelAnchor(for: button, window: window))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self, weak button] in
-            guard let self,
-                  let button,
+            guard let self else {
+                MenuPanelFocus.shared.setSwitchingMetricAnchor(false)
+                return
+            }
+            guard let button,
                   self.popover.isShown,
                   self.metricAnchorSwitchSerial > 0,
                   MenuPanelFocus.shared.activeMetric == detailKind else {
-                self?.popoverIsSwitchingAnchor = false
+                self.popoverIsSwitchingAnchor = false
                 MenuPanelFocus.shared.setSwitchingMetricAnchor(false)
+                // A close in this window, like a second click on the same
+                // metric, ran while switching, so popoverDidClose kept these.
+                if !self.popover.isShown {
+                    self.statusController.setMicBadgeHeld(false)
+                    self.releasePanelResources()
+                    self.endPanelActivationTracking()
+                }
                 return
             }
             // The pinned anchor is the yardstick; a reported frame the system
@@ -868,6 +880,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             removePopoverDismissMonitor()
             popoverIsSwitchingAnchor = false
             MenuPanelFocus.shared.setSwitchingMetricAnchor(false)
+            // A close during the show ran while switching, so popoverDidClose
+            // kept these for a panel that is not coming back.
+            if !popover.isShown {
+                statusController.setMicBadgeHeld(false)
+                releasePanelResources()
+                endPanelActivationTracking()
+            }
             return false
         }
         configurePopoverWindow(popoverWindow)
@@ -1111,6 +1130,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // Menu bar icon recovery happens on a deliberate reopen, not here: this
         // fires on every activation, so rebuilding here would cause churn/flicker.
         restoreAfterAppUpdateHandoff()
+        if settingsWindow?.isVisible == true {
+            NotificationCenter.default.post(name: LaunchAtLoginSupport.settingsRefreshRequested, object: nil)
+        }
     }
 
     /// Some updates finish in another app. With no Dock icon there is no way
@@ -1642,6 +1664,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // that page's own onAppear, since its view was never removed from
         // the hierarchy; the window itself is the only reliable signal here.
         SecureInputMonitor.shared.setSettingsWindowOpen(true)
+        SettingsWindowVisibility.shared.set(true)
+        NotificationCenter.default.post(name: LaunchAtLoginSupport.settingsRefreshRequested, object: nil)
         DispatchQueue.main.async { [weak self] in
             guard let self, let window = self.settingsWindow else { return }
             self.positionSettingsWindow(window, force: false, on: targetScreen)
@@ -2211,6 +2235,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         saveSettingsWindowSize(window)
     }
 
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === settingsWindow else { return }
+        // Minimized, on another Space or covered, Settings draws for nobody too.
+        SettingsWindowVisibility.shared.set(window.isVisible && window.occlusionState.contains(.visible))
+    }
+
     /// Remembers the user-chosen Settings size (as content size, so the
     /// restore is title bar independent).
     private func saveSettingsWindowSize(_ window: NSWindow) {
@@ -2241,6 +2271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             // page's own demand is left alone, so it resumes on its own the
             // moment the window reopens, on this page or any other.
             SecureInputMonitor.shared.setSettingsWindowOpen(false)
+            SettingsWindowVisibility.shared.set(false)
             return
         }
         if window === onboardingWindow {
@@ -2297,6 +2328,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // A clean install that just saw everything in onboarding should not
         // then get the update tour; only people who updated get it.
         markUpdateHighlightsSeen()
+        // Setup just picked the installed features; a beta adds the companion
+        // for a Command Bar user now.
+        Defaults.installCompanionForBetaCommandBar(in: .standard)
     }
 
     private func markSupportUpdateIntroSeenIfCurrentUpdate() {
