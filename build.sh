@@ -318,11 +318,13 @@ if (( TEST )); then
         Sources/Vorssaint/Core/NotchActivityStrings.swift
         Sources/Vorssaint/Services/Notch/NotchTimerSupport.swift
         Sources/Vorssaint/Services/Notch/NotchTimerAlert.swift
+        Sources/Vorssaint/UI/Notch/NotchIslandAlert.swift
         Sources/Vorssaint/Services/Notch/NotchAccessorySupport.swift
         Sources/Vorssaint/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vorssaint/Core/NotchMusicExtrasStrings.swift
         Sources/Vorssaint/Services/Notch/NotchLyricsSupport.swift
         Sources/Vorssaint/Services/Notch/NotchQueueSupport.swift
+        Sources/Vorssaint/Services/Notch/NotchPreferredPlayer.swift
         Sources/Vorssaint/Core/NotchFilesStrings.swift
         Sources/Vorssaint/Core/NotchWatchStrings.swift
         Sources/Vorssaint/Services/Notch/NotchWatchSupport.swift
@@ -602,6 +604,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/WindowDirectionalStrings.swift
         Sources/Vorssaint/Core/PointerDisplayStrings.swift
         Sources/Vorssaint/Core/GraphScaleStrings.swift
+        Sources/Vorssaint/Core/NotchLowBatteryStrings.swift
         Sources/Vorssaint/Services/CleaningMode/CleaningUnlockCounter.swift
         Sources/Vorssaint/Services/CleaningMode/CleaningMouseReleaseGate.swift
         Sources/Vorssaint/Services/Display/ExtraBrightnessSupport.swift
@@ -629,6 +632,7 @@ if (( TEST )); then
         ./Tests/PreferenceCleanupTests.sh || test_status=1
         ./Tests/DeployVersionTests.sh || test_status=1
         ./Tests/UninstallSpacesTests.sh || test_status=1
+        ./Tests/DeveloperInstallIsolationTests.sh || test_status=1
     fi
     discard_test_preferences || test_status=1
     exit $test_status
@@ -1040,16 +1044,18 @@ fi
 if (( INSTALL )); then
     echo "▸ Installing into $INSTALL_DIR…"
     stop_process "$EXECUTABLE"
-    # Remove the pre-rename apps so two menu bar items never coexist. Same bundle
-    # id, so macOS keeps the granted permissions for the new bundle.
-    for legacy in "Vorss:Vorss" "Vorssaint Utils:VorssaintUtils"; do
-        name="${legacy%%:*}"; proc="${legacy##*:}"
-        if [[ -d "$INSTALL_DIR/$name.app" ]]; then
-            stop_process "$proc"
-            rm -rf "$INSTALL_DIR/$name.app"
-            echo "  (legacy $name.app removed)"
-        fi
-    done
+    # Only an official install replaces the pre-rename official apps. The
+    # Developer variant must coexist with them just as it does with Vorssaint.
+    if (( ! DEV )); then
+        for legacy in "Vorss:Vorss" "Vorssaint Utils:VorssaintUtils"; do
+            name="${legacy%%:*}"; proc="${legacy##*:}"
+            if [[ -d "$INSTALL_DIR/$name.app" ]]; then
+                stop_process "$proc"
+                rm -rf "$INSTALL_DIR/$name.app"
+                echo "  (legacy $name.app removed)"
+            fi
+        done
+    fi
     mkdir -p "$INSTALL_DIR"
     INSTALL_DEST="$INSTALL_DIR/$APP_NAME.app"
     rm -rf "$INSTALL_DEST"
