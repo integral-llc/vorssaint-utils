@@ -72,6 +72,8 @@ struct MetricsTests {
             }),
             ("repository", { RepositoryFeatureTests.run(suite) }),
             ("screenshots", {
+                ScreenTextCompletionTests.run(suite)
+                ScreenshotOCRControlTests.run(suite)
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
@@ -82,12 +84,14 @@ struct MetricsTests {
                 ScreenCaptureToolPickerTests.run(suite)
             }),
             ("recorder", {
+                RecorderGIFWriterTests.run(suite)
                 RecorderFeatureTests.run(suite)
                 RecorderZoomAimingTests.run(suite)
                 RecorderExportSpeedTests.run(suite)
                 RecorderExportRenderingTests.run(suite)
             }),
             ("command-bar", { CommandBarFeatureTests.run(suite) }),
+            ("notch-music", { NotchMusicExtrasTests.run(suite) }),
             ("notch", {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)
@@ -113,6 +117,7 @@ struct MetricsTests {
                 NotchSettingsChoiceTests.run(suite)
                 MonitorTokenTests.run(suite)
             }),
+            ("feature-hub-layout", { FeatureHubLayoutTests.run(suite) }),
             ("display-restoration", {
                 DisplayRestorationTests.run(suite)
                 BrightnessStepTests.run(suite)
@@ -204,7 +209,9 @@ struct MetricsTests {
             groups.forEach { print($0.0) }
             exit(0)
         }
-        for (name, body) in groups where selected.isEmpty || selected.contains(name) {
+        // notch-music is a focused subset already executed by notch. Running it
+        // twice in an unfiltered pass also repeats stateful adapter fixtures.
+        for (name, body) in groups where (selected.isEmpty && name != "notch-music") || selected.contains(name) {
             suite.run(name, body)
         }
         suite.finish()
