@@ -13,6 +13,25 @@ enum NotchTVCastTests {
         tileContracts(suite)
         savedListContracts(suite)
         pageContracts(suite)
+        heightContracts(suite)
+    }
+
+    /// A short page keeps a short island at every chosen size: a custom size
+    /// only caps it, as for the timer, instead of stretching it the way the
+    /// list pages grow to the size chosen.
+    private static func heightContracts(_ suite: TestSuite) {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        for (camera, width) in [(CGFloat(0), 0.0), (32, 210)] {
+            for height in [NotchSize.defaultHeight, NotchSize.heightRange.upperBound] {
+                let geometry = NotchGeometry(screen: screen, safeAreaTop: camera, cameraWidth: width,
+                                             layout: .custom, customWidth: NotchSize.defaultWidth, customHeight: height)
+                let cast = geometry.expandedSize(module: .tvCast).height
+                let list = geometry.expandedSize(module: .mixer).height
+                suite.expect(cast <= geometry.headerTopInset + geometry.headerChromeHeight + NotchLayout.tvCastPageHeight,
+                             "Cast to TV opens to its own page height in a \(Int(height))-point custom island: \(cast)")
+                suite.expect(cast < list, "a list page grows to the custom height and Cast to TV does not: \(cast) vs \(list)")
+            }
+        }
     }
 
     /// A fresh domain holding the island's registered lists, as a new setup
