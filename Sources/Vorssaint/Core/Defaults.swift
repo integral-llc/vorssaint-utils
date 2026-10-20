@@ -869,6 +869,8 @@ enum DefaultsKey {
     // Watch: any part of any window read live in the island.
     static let notchWatchEnabled = "notchWatchEnabled"
     static let notchWatchSound = "notchWatchSound"
+    // Cast to TV in the island: opt-in, like the timer and Watch.
+    static let notchTVCastEnabled = "notchTVCastEnabled"
     static let notchWatchCondition = "notchWatchCondition"
     static let notchCalendarEnabled = "notchCalendarEnabled"
     static let notchCalendarCountdown = "notchCalendarCountdown"
@@ -1496,6 +1498,7 @@ enum Defaults {
         DefaultsKey.notchDownloadsEnabled: true,
         DefaultsKey.notchWatchEnabled: true,
         DefaultsKey.notchWatchSound: true,
+        DefaultsKey.notchTVCastEnabled: false,
         DefaultsKey.notchWatchCondition: NotchWatchCondition.changes.rawValue,
         DefaultsKey.notchEnabled: false,
         DefaultsKey.notchDisplay: NotchDisplay.automatic.rawValue,
@@ -1520,9 +1523,7 @@ enum Defaults {
         DefaultsKey.notchReturnHome: false,
         DefaultsKey.notchHomeModule: NotchModule.controls.rawValue,
         DefaultsKey.notchOpensActivity: true,
-        // Cast to TV joins the island unchecked: installing the feature
-        // offers the section without changing anyone's island.
-        DefaultsKey.notchHiddenModules: NotchModule.tvCast.rawValue,
+        DefaultsKey.notchHiddenModules: "",
         DefaultsKey.notchModuleOrder: "",
         DefaultsKey.notchQuickAccessLayout: Data(),
         DefaultsKey.notchVolume: true,
@@ -2005,7 +2006,7 @@ enum Defaults {
         migrateSwitcherPreviewSize(in: defaults)
         migrateSwitcherPreviewExcludedApps(in: defaults)
         migrateNotchWatchAvailability(in: defaults)
-        hideTVCastSectionUntilInstalled(in: defaults)
+        dropTVCastFromHiddenSections(in: defaults)
         defaults.register(defaults: registeredDefaults)
         defaults.register(defaults: AppFeature.availabilityDefaults)
         installCompanionForBetaCommandBar(in: defaults)
@@ -2247,22 +2248,17 @@ enum Defaults {
         defaults.set(false, forKey: AppFeature.notchWatch.availabilityKey)
     }
 
-    /// A saved hidden list is read whole, so one saved before the Cast to TV
-    /// section existed would show it the moment the feature is installed.
-    /// Until Cast to TV is first installed nobody can switch its section on,
-    /// so the list keeps it; from then on the choice is the person's, and it
-    /// survives an uninstall. Only saved values count: a registered default
-    /// would answer for an availability never saved.
-    static func hideTVCastSectionUntilInstalled(in defaults: UserDefaults,
-                                                domainName: String? = Bundle.main.bundleIdentifier) {
-        guard let domainName else { return }
-        let saved = defaults.persistentDomain(forName: domainName) ?? [:]
-        guard saved[AppFeature.tvCast.availabilityKey] == nil,
-              let list = saved[DefaultsKey.notchHiddenModules] as? String else { return }
-        var hidden = list.split(separator: ",").map(String.init)
-        guard !hidden.contains(NotchModule.tvCast.rawValue) else { return }
-        hidden.append(NotchModule.tvCast.rawValue)
-        defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenModules)
+    /// Cast to TV's section is switched on by its own setting, like the
+    /// timer's. Builds 3.12.2 to 3.12.4 kept it off through the hidden list
+    /// instead, and Settings saves that list whole, so the stand-in leaked
+    /// into saved lists and kept the section hidden after it was checked.
+    /// The setting decides now; a `tvCast` left in the list only hides it.
+    static func dropTVCastFromHiddenSections(in defaults: UserDefaults) {
+        guard let list = defaults.string(forKey: DefaultsKey.notchHiddenModules) else { return }
+        let hidden = list.split(separator: ",").map(String.init)
+        guard hidden.contains(NotchModule.tvCast.rawValue) else { return }
+        defaults.set(hidden.filter { $0 != NotchModule.tvCast.rawValue }.joined(separator: ","),
+                     forKey: DefaultsKey.notchHiddenModules)
     }
 
     /// Linear scrolling reached development builds installed, before new
