@@ -1520,7 +1520,9 @@ enum Defaults {
         DefaultsKey.notchReturnHome: false,
         DefaultsKey.notchHomeModule: NotchModule.controls.rawValue,
         DefaultsKey.notchOpensActivity: true,
-        DefaultsKey.notchHiddenModules: "",
+        // Cast to TV joins the island unchecked: installing the feature
+        // offers the section without changing anyone's island.
+        DefaultsKey.notchHiddenModules: NotchModule.tvCast.rawValue,
         DefaultsKey.notchModuleOrder: "",
         DefaultsKey.notchQuickAccessLayout: Data(),
         DefaultsKey.notchVolume: true,
@@ -2003,6 +2005,7 @@ enum Defaults {
         migrateSwitcherPreviewSize(in: defaults)
         migrateSwitcherPreviewExcludedApps(in: defaults)
         migrateNotchWatchAvailability(in: defaults)
+        hideTVCastSectionUntilInstalled(in: defaults)
         defaults.register(defaults: registeredDefaults)
         defaults.register(defaults: AppFeature.availabilityDefaults)
         installCompanionForBetaCommandBar(in: defaults)
@@ -2242,6 +2245,24 @@ enum Defaults {
               defaults.object(forKey: AppFeature.notch.availabilityKey) as? Bool == false
         else { return }
         defaults.set(false, forKey: AppFeature.notchWatch.availabilityKey)
+    }
+
+    /// A saved hidden list is read whole, so one saved before the Cast to TV
+    /// section existed would show it the moment the feature is installed.
+    /// Until Cast to TV is first installed nobody can switch its section on,
+    /// so the list keeps it; from then on the choice is the person's, and it
+    /// survives an uninstall. Only saved values count: a registered default
+    /// would answer for an availability never saved.
+    static func hideTVCastSectionUntilInstalled(in defaults: UserDefaults,
+                                                domainName: String? = Bundle.main.bundleIdentifier) {
+        guard let domainName else { return }
+        let saved = defaults.persistentDomain(forName: domainName) ?? [:]
+        guard saved[AppFeature.tvCast.availabilityKey] == nil,
+              let list = saved[DefaultsKey.notchHiddenModules] as? String else { return }
+        var hidden = list.split(separator: ",").map(String.init)
+        guard !hidden.contains(NotchModule.tvCast.rawValue) else { return }
+        hidden.append(NotchModule.tvCast.rawValue)
+        defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenModules)
     }
 
     /// Linear scrolling reached development builds installed, before new

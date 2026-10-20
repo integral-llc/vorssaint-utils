@@ -1774,7 +1774,7 @@ enum FeatureCatalogTests {
                    "every reason a run stopped reads differently and fills in (\(language.rawValue))")
             let tvCastValues = Mirror(reflecting: FeatureStrings.tvCast(language))
                 .children.compactMap { $0.value as? String }
-            suite.expect(tvCastValues.count == 46 && tvCastValues.allSatisfy { !$0.isEmpty },
+            suite.expect(tvCastValues.count == 49 && tvCastValues.allSatisfy { !$0.isEmpty },
                    "every Cast to TV string is set for \(language.rawValue)")
             suite.expect(tvCastValues.allSatisfy { !$0.contains("\u{2014}") && !$0.contains("'") },
                    "no em-dash or straight apostrophe in visible Cast to TV strings (\(language.rawValue))")
@@ -1799,6 +1799,11 @@ enum FeatureCatalogTests {
                          "the ytcast exit code fills in as one number (\(language.rawValue))")
             suite.expect(tvCastText.message(for: .exited(7)).contains("7"),
                    "the exit code reaches the message (\(language.rawValue))")
+            let tvCastIsland = [tvCastText.playCopiedLinkButton, tvCastText.noCopiedLink, tvCastText.noTVsIslandHint]
+            suite.expect(tvCastText.noCopiedLink.contains(tvCastText.playCopiedLinkButton)
+                    && tvCastText.noTVsIslandHint != tvCastText.noTVsHint
+                    && tvCastIsland.allSatisfy { !$0.contains("%") },
+                   "the island's hint names its button as it reads and fills in nothing (\(language.rawValue))")
             let layoutSwitcherValues = Mirror(reflecting: FeatureStrings.layoutSwitcher(language))
                 .children.compactMap { $0.value as? String }
             suite.expect(layoutSwitcherValues.count == 14

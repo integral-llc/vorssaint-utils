@@ -1733,6 +1733,7 @@ enum NotchTests {
         NotchKeyboardLightTests.run(suite)
         NotchActivityTests.run(suite)
         NotchWatchTests.run(suite)
+        NotchTVCastTests.run(suite)
         NotchDateTests.run { suite.expect($0, $1) }
         NotchMenuBarMirrorTests.run { suite.expect($0, $1) }
         NotchMascotTests.run(suite)

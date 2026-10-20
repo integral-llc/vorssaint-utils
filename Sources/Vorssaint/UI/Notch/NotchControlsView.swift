@@ -106,6 +106,8 @@ struct NotchControlsView: View {
             NotchActionTile(symbol: item.symbol, title: item.title(l10n)) { service.openAppPanel() }
         case .mixer:
             NotchActionTile(symbol: item.symbol, title: item.title(l10n)) { service.select(.mixer) }
+        case .tvCast:
+            NotchActionTile(symbol: item.symbol, title: item.title(l10n)) { service.select(.tvCast) }
         case .commandBar:
             NotchActionTile(symbol: item.symbol, title: item.title(l10n)) { service.perform { CommandBarService.shared.show() } }
         case .scratchpad:
@@ -135,6 +137,7 @@ extension NotchControlItem {
         case .music: return NotchModule.music.title(l10n.language)
         case .timer: return NotchModule.timer.title(l10n.language)
         case .calendar: return NotchModule.calendar.title(l10n.language)
+        case .tvCast: return NotchModule.tvCast.title(l10n.language)
         }
     }
 }

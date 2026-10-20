@@ -460,7 +460,7 @@ struct NotchView: View {
         case .clipboard:
             // A complete card with its action row; the search is in the top row.
             size.height = max(size.height, NotchLayout.clipboardCardHeight)
-        case .camera:
+        case .camera, .tvCast:
             // Keep permission and error messages reachable.
             size.height = max(size.height, 144)
         case .mixer:
@@ -577,6 +577,7 @@ struct NotchView: View {
             case .scratchpad: NotchScratchpadView(service: service)
             case .agents: NotchAgentsView(size: pageSize)
             case .watch: NotchWatchView(size: pageSize)
+            case .tvCast: NotchTVCastView()
             }
         }
     }
@@ -817,6 +818,7 @@ extension NotchModule: PanelOrderItem {
         case .scratchpad: return FeatureStrings.scratchpad(language).pageTitle
         case .agents: return FeatureStrings.notchAgents(language).title
         case .watch: return FeatureStrings.notchWatch(language).title
+        case .tvCast: return FeatureStrings.tvCast(language).pageTitle
         }
     }
 }

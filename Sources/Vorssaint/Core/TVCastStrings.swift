@@ -11,11 +11,14 @@ struct TVCastStrings {
     let videoLinkPlaceholder: String
     let tvLabel: String
     let sendButton: String
+    let playCopiedLinkButton: String
     let sendingFormat: String
     let sentFormat: String
     let invalidVideo: String
+    let noCopiedLink: String
     let keepYouTubeOpenHint: String
     let noTVsHint: String
+    let noTVsIslandHint: String
     let importCaption: String
     let importButton: String
     let tvsSection: String
