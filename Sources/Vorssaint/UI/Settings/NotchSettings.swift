@@ -368,7 +368,7 @@ struct NotchSettings: View {
                 ScrollView {
                     VStack(spacing: 2) {
                         ForEach(orderedModules) { module in
-                            NotchSectionListRow(module: module, included: moduleBinding(module), available: module.isAvailable(),
+                            NotchSectionListRow(module: module, included: selectingBinding(module), available: module.isAvailable(),
                                                 selected: selectedModule == module,
                                                 order: Binding(get: { orderedModules },
                                                                set: { order = $0.map(\.rawValue).joined(separator: ",") }),
@@ -387,6 +387,19 @@ struct NotchSettings: View {
         }
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// Checking a section also shows it in the preview: otherwise the pane
+    /// stays on whatever was selected, and turning a section on looks like
+    /// it did nothing.
+    private func selectingBinding(_ module: NotchModule) -> Binding<Bool> {
+        let included = moduleBinding(module)
+        return Binding {
+            included.wrappedValue
+        } set: { shown in
+            included.wrappedValue = shown
+            if shown { selectedModule = module }
+        }
     }
 
     private func isShown(_ module: NotchModule) -> Bool {

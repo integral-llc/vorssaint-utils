@@ -27,6 +27,9 @@ if CommandLine.arguments.contains("--uninstall") {
 if NotchPresentationProbe.isRequested(by: CommandLine.arguments) {
     NotchPresentationProbe.runAndExit()
 }
+if NotchPageRenderProbe.isRequested(by: CommandLine.arguments) {
+    NotchPageRenderProbe.runAndExit()
+}
 #endif
 
 let app = NSApplication.shared
