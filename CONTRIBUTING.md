@@ -88,7 +88,10 @@ as missing.
 
 That fetches `yt-dlp`, `ffmpeg` and `ffprobe`, builds `whisper.cpp` with CMake, downloads the model into
 `~/Library/Application Support/Vorssaint/Models`, caches all of it under
-`build/.transcriber`, and stages and signs the binaries inside the bundle.
+`~/Library/Caches/vorssaint-build/transcriber`, and stages and signs the binaries inside the bundle.
+The cache outlives `build/`, so later builds reuse it; `yt-dlp` is fetched again once
+its copy is more than 7 days old, and `--refresh-helpers` starts the whole cache over.
+`VORSSAINT_HELPER_CACHE` moves the cache elsewhere.
 
 `ffmpeg` and `ffprobe` are Martin Riedl's static arm64 builds, configured with
 `--enable-gpl --enable-version3` and so GPL-3.0, which this app's licence
@@ -108,7 +111,7 @@ arm64 and x86_64 and refuses either archive unless its SHA-256 matches the
 checksum pinned in `build.sh`. It then merges the two into one universal
 binary, checks that it reports `ytcast v1.4.1`, and stages it in
 `Contents/Helpers`, with its MIT licence in `Contents/Resources/ThirdParty`.
-The result is cached under `build/.ytcast`. Moving to a newer release means
+The result is cached under `~/Library/Caches/vorssaint-build/ytcast`. Moving to a newer release means
 changing the version and both checksums together. `just deploy` passes
 `--ytcast` too.
 

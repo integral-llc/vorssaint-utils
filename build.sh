@@ -36,13 +36,21 @@ TEST_ARGS=()
 # plain build must stay the dependency-free swiftc call CI runs, so they are
 # fetched only when asked for, cached, and staged from the cache afterwards.
 TRANSCRIBER=0
-TRANSCRIBER_CACHE="build/.transcriber"
+# The helper cache lives outside build/: a release build empties build/
+# first, and refetching every helper and rebuilding whisper.cpp was half of
+# each deploy. --refresh-helpers starts the cache over.
+HELPER_CACHE="${VORSSAINT_HELPER_CACHE:-$HOME/Library/Caches/vorssaint-build}"
+REFRESH_HELPERS=0
+TRANSCRIBER_CACHE="$HELPER_CACHE/transcriber"
+# yt-dlp breaks whenever YouTube rotates its player, so a cached copy older
+# than this is fetched again; the other helpers have no such adversary.
+YTDLP_MAX_AGE_DAYS=7
 # Cast to TV drives ytcast, another third-party binary, under the same rule.
 # It is pinned to one release and held to that release's published
 # checksums, so a moved tag or a swapped asset fails the build instead of
 # shipping inside the app.
 YTCAST=0
-YTCAST_CACHE="build/.ytcast"
+YTCAST_CACHE="$HELPER_CACHE/ytcast"
 YTCAST_VERSION="v1.4.1"
 YTCAST_SHA256_ARM64="69db622ad4808895a3993260c41e80ba0655cedf54c204ec9230e36f6afd9bc2"
 YTCAST_SHA256_AMD64="1d769f973025b0c766f6fe70637bc85f962b1a4e0af9c5d800a1e24ccb6ba982"
@@ -55,6 +63,7 @@ for arg in "$@"; do
         --list-tests) TEST=1; TEST_ARGS+=(--list) ;;
         --transcriber) TRANSCRIBER=1 ;;
         --ytcast)  YTCAST=1 ;;
+        --refresh-helpers) REFRESH_HELPERS=1 ;;
     esac
 done
 
@@ -754,10 +763,21 @@ fetch_transcriber_helpers() {
     local model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
     mkdir -p "$TRANSCRIBER_CACHE"
 
-    if [[ ! -x "$TRANSCRIBER_CACHE/yt-dlp" ]]; then
+    local ytdlp="$TRANSCRIBER_CACHE/yt-dlp"
+    if [[ ! -x "$ytdlp" || -n "$(find "$ytdlp" -mtime +"$YTDLP_MAX_AGE_DAYS" 2>/dev/null)" ]]; then
         echo "  fetching yt-dlp…"
-        curl -fL --progress-bar -o "$TRANSCRIBER_CACHE/yt-dlp" "$ytdlp_url"
-        chmod +x "$TRANSCRIBER_CACHE/yt-dlp"
+        # Into a side file first: offline, a stale copy still builds, while
+        # a missing one has to stop the build.
+        if curl -fL --progress-bar -o "$ytdlp.download" "$ytdlp_url"; then
+            chmod +x "$ytdlp.download"
+            mv -f "$ytdlp.download" "$ytdlp"
+        elif [[ -x "$ytdlp" ]]; then
+            rm -f "$ytdlp.download"
+            echo "  ⚠ yt-dlp refresh failed, keeping the cached copy" >&2
+        else
+            echo "✗ yt-dlp could not be fetched" >&2
+            exit 1
+        fi
     fi
 
     # Martin Riedl's static arm64 builds link only system frameworks, so they
@@ -804,7 +824,9 @@ fetch_transcriber_helpers() {
 
 stage_transcriber_helpers() {
     local bundle="$1"
-    [[ -d "$TRANSCRIBER_CACHE" ]] || return 0
+    # The cache outlives build/ now, so its presence no longer means this
+    # build asked for the helpers.
+    (( TRANSCRIBER )) && [[ -d "$TRANSCRIBER_CACHE" ]] || return 0
     local staged=0
     mkdir -p "$bundle/Contents/Helpers"
     for helper in yt-dlp ffmpeg ffprobe whisper-cli; do
@@ -899,6 +921,11 @@ stage_ytcast_helper() {
     mkdir -p "$bundle/Contents/Resources/ThirdParty"
     cp "$YTCAST_CACHE/ytcast-license.txt" "$bundle/Contents/Resources/ThirdParty/ytcast-license.txt"
 }
+
+if (( REFRESH_HELPERS )); then
+    echo "▸ Clearing the helper cache…"
+    rm -rf -- "${TRANSCRIBER_CACHE:?}" "${YTCAST_CACHE:?}"
+fi
 
 if (( TRANSCRIBER )); then
     echo "▸ Fetching transcriber helpers…"
