@@ -116,8 +116,13 @@ address, under its own policies.
 
 The pairing tokens and TV names are kept in a file in a TVCast folder inside
 Vorssaint's own private data folder on this Mac, which the official and
-Developer builds each keep separately. Removing a TV deletes its entry. Nothing
-here happens on its own: nothing is sent until you pair a TV or press Send.
+Developer builds each keep separately. Removing a TV deletes its entry. To
+offer TVs already paired with the ytcast command line, Vorssaint reads ytcast's
+own list at `~/.cache/ytcast/ytcast.json` on this Mac and copies the TVs paired
+with a code, pairing tokens included, into its own list: once on its own the
+first time Cast to TV runs, and later only when you press Import. It never
+changes that file, and nothing is sent anywhere by this. Nothing else here
+happens on its own: nothing is sent until you pair a TV or press Send.
 
 That is the entire list. There are no hidden beacons or background uploads.
 

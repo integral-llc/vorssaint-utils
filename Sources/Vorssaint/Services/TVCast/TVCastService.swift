@@ -26,6 +26,9 @@ enum TVCastOutcome: Equatable {
     /// The id lets Settings pick the TV it just paired.
     case paired(id: String, name: String)
     case sent(String)
+    /// The TVs an import from the command line's ytcast added, none when the
+    /// list already had them all, so Settings can pick one.
+    case imported(ids: [String])
     case failed(TVCastFailure, during: TVCastRequest)
 }
 
@@ -38,8 +41,17 @@ final class TVCastService: ObservableObject {
     /// local network, with DIAL, Wake-on-LAN and SSDP, which Vorssaint never
     /// asks it to do.
     @Published private(set) var devices: [TVCastDevice] = []
+    /// TVs the command line's ytcast paired with a code that the list lacks,
+    /// for Settings to offer an import.
+    @Published private(set) var importableCount = 0
     @Published private(set) var activity: TVCastActivity = .idle
     @Published private(set) var outcome: TVCastOutcome?
+
+    /// What the list shows, read together on the queue and published together.
+    private struct Listing {
+        let devices: [TVCastDevice]
+        let importableCount: Int
+    }
 
     /// The only runs Vorssaint makes. ytcast's other modes (`-l`, `-s`, a
     /// cast with no saved TV) search the local network, which a TV paired
@@ -79,6 +91,16 @@ final class TVCastService: ObservableObject {
     private static let stateDirectory = PrivateFileStore.containerURL?
         .appendingPathComponent("TVCast", isDirectory: true)
     private static let cacheURL = stateDirectory?.appendingPathComponent(TVCastSupport.cacheSubpath)
+    /// The list ytcast keeps when the person runs it from the command line.
+    /// Only ever read, to offer the TVs paired there; that ytcast owns it.
+    private static let commandLineCacheURL = TVCastSupport.commandLineCacheURL(
+        home: FileManager.default.homeDirectoryForCurrentUser)
+    /// A TV list is a few hundred bytes per TV; anything far larger, or not a
+    /// plain file, is not ytcast's and is not read.
+    private static let maxCommandLineCacheBytes = 1 << 20
+    /// Left once the first import is saved, so a TV removed later is not
+    /// brought back by the next reload.
+    private static let importMarkerURL = stateDirectory?.appendingPathComponent("cli-import-done")
 
     private let queue = DispatchQueue(label: "com.vorssaint.utils.tvcast", qos: .userInitiated)
     private let lock = NSLock()
@@ -100,10 +122,15 @@ final class TVCastService: ObservableObject {
         }
     }
 
+    /// The first reload with the feature on also imports, once, the TVs the
+    /// command line's ytcast already paired, so they show up without a
+    /// second pairing.
     func reload() {
+        let importsOnce = AppFeature.tvCast.isAvailable
         queue.async { [weak self] in
-            let devices = Self.loadDevices()
-            DispatchQueue.main.async { self?.devices = devices }
+            if importsOnce { Self.importOnce() }
+            let listing = Self.listing()
+            DispatchQueue.main.async { self?.show(listing) }
         }
     }
 
@@ -138,11 +165,17 @@ final class TVCastService: ObservableObject {
     }
 
     func rename(_ id: String, to name: String) {
-        edit { TVCastSupport.renaming(id, to: name, inCache: $0) }
+        edit { Self.rewriteCache { TVCastSupport.renaming(id, to: name, inCache: $0) } }
     }
 
     func remove(_ id: String) {
-        edit { TVCastSupport.removing(id, fromCache: $0) }
+        edit { Self.rewriteCache { TVCastSupport.removing(id, fromCache: $0) } }
+    }
+
+    /// Copies in the TVs the command line's ytcast paired with a code that
+    /// the list lacks. No ytcast runs: it is an edit of the list.
+    func importFromCommandLine() {
+        edit { Self.importCommandLineTVs().map { .imported(ids: $0) } ?? .failed(.cacheUnreadable, during: .edit) }
     }
 
     // MARK: - Private
@@ -158,33 +191,75 @@ final class TVCastService: ObservableObject {
     /// by uninstalling reports nothing: nobody is left to read it.
     private func finishRun(_ cancellation: BoundedProcessCancellation, with result: TVCastOutcome) {
         lock.withLock { if running === cancellation { running = nil } }
-        let devices = Self.loadDevices()
+        let listing = Self.listing()
         let outcome = cancellation.isCancelled ? nil : result
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.devices = devices
+            self.show(listing)
             self.activity = .idle
             self.outcome = outcome
         }
     }
 
-    private func edit(_ change: @escaping (Data) -> Data?) {
+    /// A change to the list that runs no ytcast. `change` runs on the queue
+    /// and returns how the request ended, nil when there is nothing to say.
+    private func edit(_ change: @escaping () -> TVCastOutcome?) {
         guard AppFeature.tvCast.isAvailable else { return }
         queue.async { [weak self] in
             // Cleared once the edit starts, behind whatever was queued ahead
             // of it, so a result reported in between cannot outlive it and
             // the outcome always answers the latest request.
             DispatchQueue.main.async { self?.outcome = nil }
-            let changed = Self.readCache().flatMap(change)
-            let saved = changed.map(Self.writeCache) ?? false
-            if changed == nil { Self.log.error("the TV list had no entry to change") }
-            let devices = Self.loadDevices()
+            let outcome = change()
+            let listing = Self.listing()
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.devices = devices
-                if !saved { self.outcome = .failed(.cacheUnreadable, during: .edit) }
+                self.show(listing)
+                if let outcome { self.outcome = outcome }
             }
         }
+    }
+
+    /// On the main queue.
+    private func show(_ listing: Listing) {
+        devices = listing.devices
+        importableCount = listing.importableCount
+    }
+
+    /// Nil once the changed list is saved.
+    private static func rewriteCache(_ change: (Data) -> Data?) -> TVCastOutcome? {
+        let changed = readCache().flatMap(change)
+        if changed == nil { log.error("the TV list had no entry to change") }
+        return changed.map(writeCache) == true ? nil : .failed(.cacheUnreadable, during: .edit)
+    }
+
+    /// Once per container, on the queue. The marker is left only once the
+    /// import is saved, or once there is nothing to import, so a write that
+    /// failed is tried again on the next reload.
+    private static func importOnce() {
+        guard let marker = importMarkerURL, !FileManager.default.fileExists(atPath: marker.path),
+              importCommandLineTVs() != nil,
+              let directory = stateDirectory, PrivateFileStore.createDirectory(at: directory) else { return }
+        if !PrivateFileStore.write(Data(), to: marker) {
+            log.error("could not note that the TVs paired with ytcast were imported")
+        }
+    }
+
+    /// The ids it added, none when the list already has every TV; nil when
+    /// the list could not be read or saved. A list that exists but cannot be
+    /// read is never written over.
+    private static func importCommandLineTVs() -> [String]? {
+        let commandLine = readCommandLineCache()
+        let current = readCache()
+        if current == nil, let cacheURL, FileManager.default.fileExists(atPath: cacheURL.path) { return nil }
+        guard let merged = TVCastSupport.importing(fromCommandLine: commandLine, intoApp: current) else { return [] }
+        let added = TVCastSupport.importableIDs(fromCommandLine: commandLine, intoApp: current)
+        return writeCache(merged) ? added : nil
+    }
+
+    private static func listing() -> Listing {
+        let importable = TVCastSupport.importableIDs(fromCommandLine: readCommandLineCache(), intoApp: readCache())
+        return Listing(devices: loadDevices(), importableCount: importable.count)
     }
 
     private static func performPairing(code: String, name: String,
@@ -286,10 +361,31 @@ final class TVCastService: ObservableObject {
         }
     }
 
+    /// ytcast's own list from the command line, nil when there is none. It
+    /// is another program's file, so a FIFO or an oversized file there must
+    /// not stall the queue.
+    private static func readCommandLineCache() -> Data? {
+        let url = commandLineCacheURL.resolvingSymlinksInPath()
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let size = (attributes[.size] as? NSNumber)?.intValue, size <= maxCommandLineCacheBytes else {
+            log.error("ytcast's own TV list is not a plain file of a plausible size; not reading it")
+            return nil
+        }
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            log.error("could not read ytcast's own TV list: \(error.localizedDescription, privacy: .private)")
+            return nil
+        }
+    }
+
     /// Through PrivateFileStore: atomic, so a crash never leaves half a list
     /// behind, and owner-only, because the file holds every pairing token.
+    /// The folder is made first: an import can write the very first list.
     private static func writeCache(_ data: Data) -> Bool {
-        guard let cacheURL, PrivateFileStore.write(data, to: cacheURL) else {
+        guard let cacheURL, PrivateFileStore.createDirectory(at: cacheURL.deletingLastPathComponent()),
+              PrivateFileStore.write(data, to: cacheURL) else {
             log.error("could not save the TV list")
             return false
         }

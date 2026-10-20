@@ -1774,7 +1774,7 @@ enum FeatureCatalogTests {
                    "every reason a run stopped reads differently and fills in (\(language.rawValue))")
             let tvCastValues = Mirror(reflecting: FeatureStrings.tvCast(language))
                 .children.compactMap { $0.value as? String }
-            suite.expect(tvCastValues.count == 44 && tvCastValues.allSatisfy { !$0.isEmpty },
+            suite.expect(tvCastValues.count == 46 && tvCastValues.allSatisfy { !$0.isEmpty },
                    "every Cast to TV string is set for \(language.rawValue)")
             suite.expect(tvCastValues.allSatisfy { !$0.contains("\u{2014}") && !$0.contains("'") },
                    "no em-dash or straight apostrophe in visible Cast to TV strings (\(language.rawValue))")
@@ -1791,6 +1791,10 @@ enum FeatureCatalogTests {
                                  tvCastText.pairedFormat, tvCastText.actionsFormat, tvCastText.failureOtherFormat]
             suite.expect(tvCastFormats.allSatisfy { $0.components(separatedBy: "%@").count == 2 },
                    "every Cast to TV format fills in exactly one value (\(language.rawValue))")
+            let tvCastImport = [tvCastText.importButton, tvCastText.importCaption]
+            suite.expect(tvCastImport.allSatisfy { $0.contains("ytcast") && !$0.contains("%") }
+                    && tvCastText.importButton != tvCastText.importCaption,
+                   "the import offer names ytcast as it is and fills in nothing (\(language.rawValue))")
             expectFormat(tvCastText.failureExitedFormat, ["d"],
                          "the ytcast exit code fills in as one number (\(language.rawValue))")
             suite.expect(tvCastText.message(for: .exited(7)).contains("7"),

@@ -245,6 +245,31 @@ enum TVCastSupport {
         return missing.isEmpty ? nil : serialized(current + missing)
     }
 
+    /// The list a ytcast run from the command line keeps: its default when
+    /// `XDG_CACHE_HOME` is unset.
+    static func commandLineCacheURL(home: URL) -> URL {
+        home.appendingPathComponent(".cache", isDirectory: true).appendingPathComponent(cacheSubpath)
+    }
+
+    /// The code-paired TVs in the command line's list that `app` lacks, in
+    /// that list's order. Empty when either list cannot be read.
+    static func importableIDs(fromCommandLine cli: Data?, intoApp app: Data?) -> [String] {
+        guard let current = listedEntries(app) else { return [] }
+        return importableEntries(from: cli, besides: current).compactMap(entryID)
+    }
+
+    /// `app` with every importable TV appended, each entry copied whole.
+    /// An imported TV is not the last used one unless `app` lists no TV of
+    /// its own. Nil when there is nothing to import, or when `app` exists but
+    /// does not read as a list: that file is never written over.
+    static func importing(fromCommandLine cli: Data?, intoApp app: Data?) -> Data? {
+        guard let current = listedEntries(app) else { return nil }
+        let imported = importableEntries(from: cli, besides: current)
+        guard !imported.isEmpty else { return nil }
+        let settled = current.isEmpty ? imported : imported.map { $0.merging(["LastUsed": false]) { _, new in new } }
+        return serialized(current + settled)
+    }
+
     /// Nil when the run succeeded.
     static func failure(fromOutput output: String, status: Int32, timedOut: Bool) -> TVCastFailure? {
         if timedOut { return .timedOut }
@@ -313,6 +338,33 @@ enum TVCastSupport {
     private static func cacheEntries(_ data: Data?) -> [[String: Any]]? {
         guard let data, !data.isEmpty else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+    }
+
+    /// The entries of a list about to be added to: none when there is no
+    /// file, an empty one, or ytcast's `null` for an empty list; nil when the
+    /// file holds anything else that is not a list.
+    private static func listedEntries(_ data: Data?) -> [[String: Any]]? {
+        guard let data, !data.isEmpty else { return [] }
+        if let entries = cacheEntries(data) { return entries }
+        return (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) is NSNull ? [] : nil
+    }
+
+    /// The command line's code-paired entries whose TV `current` does not
+    /// list, by id or by screen: a screen the list already pairs with is the
+    /// same TV under an older or newer pairing. An id listed twice counts
+    /// once, as the last entry, the one ytcast itself would load.
+    private static func importableEntries(from cli: Data?, besides current: [[String: Any]]) -> [[String: Any]] {
+        let listedIDs = Set(current.compactMap(entryID))
+        let listedScreens = Set(current.filter(isCodePaired).compactMap(screenID))
+        var seen = Set<String>()
+        var picked: [[String: Any]] = []
+        for entry in (cacheEntries(cli) ?? []).reversed() {
+            guard isCodePaired(entry), let id = entryID(entry), !listedIDs.contains(id),
+                  !(screenID(entry).map(listedScreens.contains) ?? false),
+                  seen.insert(id).inserted else { continue }
+            picked.append(entry)
+        }
+        return picked.reversed()
     }
 
     /// Slashes stay unescaped so the file keeps reading like ytcast's own.

@@ -593,6 +593,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
         Sources/Vorssaint/Services/TVCast/TVCastSupport.swift
         Sources/Vorssaint/Core/TVCastStrings.swift
+        Sources/Vorssaint/Core/TVCastStrings+Languages.swift
         Sources/Vorssaint/Core/InputSourceSelection.swift
         Sources/Vorssaint/Services/SessionActivity.swift
         Sources/Vorssaint/Services/SessionActivitySupport.swift

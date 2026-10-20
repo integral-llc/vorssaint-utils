@@ -46,10 +46,18 @@ struct TVCastSettings: View {
         }
         .onAppear { service.reload() }
         .onChange(of: service.outcome) { _, outcome in
-            guard case .paired(let id, _) = outcome else { return }
-            code = ""
-            newName = ""
-            pickedID = id
+            switch outcome {
+            case .paired(let id, _):
+                code = ""
+                newName = ""
+                pickedID = id
+            case .imported(let ids) where pickedID == nil:
+                // The list is published with the outcome, so its order,
+                // last used first, decides which imported TV is picked.
+                pickedID = service.devices.first { ids.contains($0.id) }?.id
+            default:
+                break
+            }
         }
         .alert(text.renameTitle, isPresented: isPresented($renaming), presenting: renaming) { device in
             TextField(text.nameLabel, text: $renameDraft, prompt: Text(text.namePlaceholder))
@@ -93,7 +101,12 @@ struct TVCastSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if service.devices.isEmpty {
+            if service.devices.isEmpty && service.importableCount > 0 {
+                // Without TVs the TVs section is hidden, so the offer, and
+                // what went wrong with it, stand where the picker will be.
+                importOffer
+                statusRow(progress: nil, success: nil, failure: failure(during: .edit))
+            } else if service.devices.isEmpty {
                 Text(text.noTVsHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -120,9 +133,25 @@ struct TVCastSettings: View {
                 ForEach(service.devices) { device in
                     deviceRow(device)
                 }
+                if service.importableCount > 0 {
+                    importOffer
+                }
                 statusRow(progress: nil, success: nil, failure: failure(during: .edit))
             }
         }
+    }
+
+    /// TVs the command line's ytcast paired that this list lacks. Disabled
+    /// while ytcast runs, like the other edits: it would wait behind the run
+    /// with no sign of it.
+    @ViewBuilder
+    private var importOffer: some View {
+        Text(text.importCaption)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        Button(text.importButton, action: importFromCommandLine)
+            .disabled(!isIdle)
     }
 
     private var addSection: some View {
@@ -272,6 +301,11 @@ struct TVCastSettings: View {
     private func pair() {
         guard canPair else { return }
         service.pair(code: code, name: newName)
+    }
+
+    private func importFromCommandLine() {
+        guard isIdle else { return }
+        service.importFromCommandLine()
     }
 
     private func pairAgain(_ device: TVCastDevice) {

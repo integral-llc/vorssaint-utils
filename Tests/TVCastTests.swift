@@ -20,6 +20,10 @@ enum TVCastTests {
         settledPairingRules(suite)
         cacheRestoreRules(suite)
         pairingMergeRules(suite)
+        commandLinePathRules(suite)
+        commandLineImportRules(suite)
+        commandLineMergeRules(suite)
+        commandLineFidelityRules(suite)
         failureRules(suite)
         networkFailureRules(suite)
         serviceSourceRules(suite)
@@ -458,6 +462,108 @@ enum TVCastTests {
         suite.expectEqual(ids(rePaired), ["b", "a"], "and is not listed twice")
     }
 
+    // MARK: Command line import
+
+    private static func lastUsed(_ id: String, in data: Data?) -> Bool? {
+        parse(data)?.first { ($0["Remote"] as? [String: Any])?["DeviceId"] as? String == id }?["LastUsed"] as? Bool
+    }
+
+    private static func commandLinePathRules(_ suite: TestSuite) {
+        let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+        suite.expectEqual(TVCastSupport.commandLineCacheURL(home: home).path,
+                          "/Users/someone/.cache/ytcast/ytcast.json",
+                          "ytcast's own list sits in ~/.cache when XDG_CACHE_HOME is unset")
+    }
+
+    private static func commandLineImportRules(_ suite: TestSuite) {
+        func importable(_ cli: Data?, _ app: Data?) -> [String] {
+            TVCastSupport.importableIDs(fromCommandLine: cli, intoApp: app)
+        }
+        func imported(_ cli: Data?, _ app: Data?) -> Data? {
+            TVCastSupport.importing(fromCommandLine: cli, intoApp: app)
+        }
+        let cli = data([entry("cli", used: true, name: "YouTube on TV")])
+        let unusable: [(Data?, String)] = [
+            (nil, "no command line list"), (Data(), "an empty file"), (Data("{oops".utf8), "a malformed list"),
+            (Data("null".utf8), "ytcast's empty list"), (Data("{\"a\":1}".utf8), "a list of the wrong type"),
+            (data([discovered("uuid:d", name: "Bedroom")]), "a list holding only a discovered TV"),
+        ]
+        for (source, label) in unusable {
+            suite.expect(importable(source, nil).isEmpty && imported(source, nil) == nil,
+                         "\(label) imports nothing")
+        }
+        for (app, label) in [(nil, "no list"), (Data(), "an empty file"), (Data("null".utf8), "null"),
+                             (Data("[]".utf8), "an empty list")] as [(Data?, String)] {
+            suite.expectEqual(importable(cli, app), ["cli"], "a code-paired TV is offered to \(label)")
+            suite.expectEqual(ids(imported(cli, app)), ["cli"], "a code-paired TV is copied into \(label)")
+            suite.expectEqual(lastUsed("cli", in: imported(cli, app)), true,
+                              "with no TV of its own, the list takes ytcast's last used TV as is (\(label))")
+        }
+        suite.expect(importable(cli, cli).isEmpty && imported(cli, cli) == nil,
+                     "a TV the list already has is not imported again")
+        let elsewhere = data([entry("app", screen: "S1")])
+        let sameScreen = data([entry("cli", screen: "S1")])
+        suite.expect(importable(sameScreen, elsewhere).isEmpty && imported(sameScreen, elsewhere) == nil,
+                     "a pairing of a screen the list already pairs with is the same TV, not a new one")
+        for broken in [Data("oops".utf8), Data("{\"a\":1}".utf8)] {
+            suite.expect(importable(cli, broken).isEmpty && imported(cli, broken) == nil,
+                         "a list that cannot be read is never written over")
+        }
+        let twice = data([entry("dup", token: "first"), entry("dup", token: "second")])
+        suite.expectEqual(importable(twice, nil), ["dup"], "an id listed twice is offered once")
+        suite.expectEqual(ids(imported(twice, nil)), ["dup"], "an id listed twice is copied once")
+        suite.expectEqual(remoteField("LoungeToken", of: "dup", in: imported(twice, nil)), "second",
+                          "as in ytcast's own loading, the last entry with an id wins")
+    }
+
+    private static func commandLineMergeRules(_ suite: TestSuite) {
+        let app = data([entry("app", used: true, name: "Den"), discovered("uuid:d", name: "Bedroom")])
+        let cli = data([
+            discovered("uuid:other", name: "Office"), entry("app", token: "cli-token"),
+            entry("new1", used: true, name: "Kitchen"), entry("new2", name: "Attic"),
+        ])
+        suite.expectEqual(TVCastSupport.importableIDs(fromCommandLine: cli, intoApp: app), ["new1", "new2"],
+                          "only code-paired TVs the list lacks are offered, in ytcast's order")
+        let merged = TVCastSupport.importing(fromCommandLine: cli, intoApp: app)
+        suite.expectEqual(ids(merged), ["app", "uuid:d", "new1", "new2"],
+                          "the list keeps its TVs and gains the new ones after them")
+        suite.expectEqual(remoteField("LoungeToken", of: "app", in: merged), "t",
+                          "a TV the list already has keeps its own pairing")
+        suite.expectEqual(lastUsed("app", in: merged), true, "the list's own last used TV stays last used")
+        suite.expect(lastUsed("new1", in: merged) == false && lastUsed("new2", in: merged) == false,
+                     "an imported TV is not last used in a list that has its own")
+        suite.expectEqual(TVCastSupport.devices(fromCache: merged).filter(\.pairedWithCode).map(\.name),
+                          ["Den", "Attic", "Kitchen"], "the merged list reads like any other")
+        suite.expect(TVCastSupport.importableIDs(fromCommandLine: cli, intoApp: merged).isEmpty,
+                     "once imported, nothing is left to offer")
+    }
+
+    private static func commandLineFidelityRules(_ suite: TestSuite) {
+        let merged = TVCastSupport.importing(fromCommandLine: richCache, intoApp: data([entry("app")]))
+        let entries = parse(merged)
+        suite.expectEqual(ids(merged), ["app", "dev-code"], "the discovered TV in the same list stays behind")
+        let copied = entries?.last
+        let remote = copied?["Remote"] as? [String: Any]
+        suite.expect(copied?["Device"] is NSNull, "Device stays null, so ytcast still reads it as paired with a code")
+        suite.expectEqual(remote?["ScreenName"] as? String, "Living room", "the name is copied")
+        suite.expectEqual(remote?["LoungeToken"] as? String, "tok", "the pairing token is copied")
+        suite.expectEqual(remote?["SId"] as? String, "sid", "the session fields are copied")
+        suite.expectEqual((remote?["Expiration"] as? NSNumber)?.int64Value, 1_790_000_000_123,
+                          "Expiration stays exact")
+        suite.expect((remote?["Expiration"] as? NSNumber).map { !CFNumberIsFloatType($0) } == true,
+                     "Expiration stays an integer")
+        suite.expectEqual((remote?["Future"] as? [Any])?.count, 2, "unknown Remote fields are copied")
+        let extra = copied?["Extra"] as? [String: Any]
+        suite.expectEqual((extra?["n"] as? NSNumber)?.int64Value, 10_000_000_000,
+                          "unknown top-level fields are copied")
+        suite.expectEqual(copied?["LastUsed"] as? Bool, false, "LastUsed is cleared beside the list's own TV")
+        let text = merged.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        suite.expect(!text.contains("1.79") && !text.contains("e+"),
+                     "integers are not serialized as floats: \(text.count) bytes")
+        let alone = parse(TVCastSupport.importing(fromCommandLine: richCache, intoApp: nil))
+        suite.expectEqual(alone?.first?["LastUsed"] as? Bool, true, "into an empty list LastUsed is kept")
+    }
+
     // MARK: Failure
 
     private static func failureRules(_ suite: TestSuite) {
@@ -549,6 +655,7 @@ enum TVCastTests {
                 && code.components(separatedBy: "\"-").count == 1,
                "a Command builds only the pair and cast arguments, and no other flag is spelled out")
         sendGuardRules(suite, code: code)
+        commandLineReadOnlyRules(suite, code: code)
         suite.expect(!code.contains("NSLog") && !code.contains("print(") && !code.contains("/tmp")
                 && !code.contains("as!") && !code.contains("usleep"),
                "the TV cast service logs through Logger only and neither force-casts nor sleeps")
@@ -586,6 +693,31 @@ enum TVCastTests {
                "a cast runs only after the TV is found in the cache file, paired with a code")
         suite.expect(code.contains("TVCastSupport.devices(fromCache: readCache()).filter(\\.pairedWithCode)"),
                "the service lists only TVs paired with a code")
+    }
+
+    /// The command line's ytcast owns its list, and docs/PRIVACY.md promises
+    /// Vorssaint never changes it: one read touches it, and every write goes
+    /// to Vorssaint's own list or its import marker.
+    private static func commandLineReadOnlyRules(_ suite: TestSuite, code: String) {
+        suite.expect(code.contains("private static let commandLineCacheURL = TVCastSupport.commandLineCacheURL(")
+                && code.contains("home: FileManager.default.homeDirectoryForCurrentUser)")
+                && code.contains("let url = commandLineCacheURL.resolvingSymlinksInPath()")
+                && code.components(separatedBy: "commandLineCacheURL").count == 4,
+               "ytcast's own list is found from the home folder and used by one read only")
+        let writes = code.components(separatedBy: "PrivateFileStore.write(").dropFirst()
+        let ownFiles = ["data, to: cacheURL)", "Data(), to: marker)"]
+        suite.expect(writes.count == 2 && writes.allSatisfy { write in ownFiles.contains(where: write.hasPrefix) },
+               "the service writes only its own list and its import marker")
+        let fileChanges = [".write(to:", "removeItem", "moveItem", "replaceItem", "copyItem", "linkItem",
+                           "createFile", "forWritingTo", "forUpdating", "trashItem", "setAttributes",
+                           "createSymbolicLink"]
+        suite.expect(!fileChanges.contains(where: code.contains),
+               "nothing else in the service writes, moves or deletes a file")
+        let importer = code.components(separatedBy: "private static func importCommandLineTVs()").dropFirst().first?
+            .components(separatedBy: "private static func listing()").first ?? ""
+        suite.expect(code.contains("edit { Self.importCommandLineTVs()")
+                && importer.contains("writeCache(merged)") && !importer.contains("run("),
+               "an import is an edit of the list and runs no ytcast")
     }
 }
 
