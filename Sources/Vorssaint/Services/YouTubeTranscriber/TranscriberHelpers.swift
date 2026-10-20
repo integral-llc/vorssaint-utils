@@ -23,10 +23,8 @@ enum TranscriberHelpers {
         return base.appendingPathComponent("Vorssaint/Models", isDirectory: true)
     }
 
-    /// The executable to run, or nil when the helper is not installed. Nil is a
-    /// real answer here rather than a fallback to whatever is on PATH: running
-    /// an arbitrary same-named binary from the user's shell environment is not
-    /// something a signed app should do quietly.
+    /// The executable to run, or nil when the helper is not installed. An
+    /// updated yt-dlp wins over the bundled one; nothing falls back to PATH.
     static func path(for helper: TranscriberHelper) -> String? {
         if helper.updatesItself {
             let updated = updatableDirectory.appendingPathComponent(helper.rawValue)
@@ -34,17 +32,7 @@ enum TranscriberHelpers {
                 return updated.path
             }
         }
-        if let bundled = Bundle.main.url(forAuxiliaryExecutable: helper.rawValue),
-           FileManager.default.isExecutableFile(atPath: bundled.path) {
-            return bundled.path
-        }
-        let staged = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Helpers")
-            .appendingPathComponent(helper.rawValue)
-        if FileManager.default.isExecutableFile(atPath: staged.path) {
-            return staged.path
-        }
-        return nil
+        return BundledHelper.path(named: helper.rawValue)
     }
 
     static func isInstalled(_ helper: TranscriberHelper) -> Bool {

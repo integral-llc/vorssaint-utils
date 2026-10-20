@@ -153,6 +153,7 @@ Reorder or hide panel sections, choose a compact layout, and export settings to 
 - **Color picker.** Copy a screen color as HEX, RGB, HSL or SwiftUI code.
 - **Media tools.** Compress and edit videos, batch-convert images, add watermarks, make GIFs and extract text, all locally.
 - **Transcriber.** Turn a video link or a local audio or video file into a text transcript. Decoding runs on your Mac, or on a whisper.cpp server of your own. Needs helper binaries the build stages into the app; see [contributing](CONTRIBUTING.md).
+- **Cast to TV.** Send a YouTube link to an Apple TV or any other TV running YouTube, paired once with the TV code the YouTube app shows. Plays through ytcast, which the build stages into the app; see [contributing](CONTRIBUTING.md).
 
 ### App management
 
@@ -247,6 +248,7 @@ Vorssaint is free and will stay that way. If it earned its place in your menu ba
 
 - App icon designed by [@divisionseven](https://github.com/divisionseven)
 - Layout switcher word frequencies and character models are derived from [wordfreq](https://github.com/rspeer/wordfreq) 3.1.1 data, used under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+- Cast to TV sends videos through [ytcast](https://github.com/MarcoLucidi01/ytcast) by Marco Lucidi, used under the MIT License
 
 ## License
 

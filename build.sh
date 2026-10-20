@@ -37,6 +37,15 @@ TEST_ARGS=()
 # fetched only when asked for, cached, and staged from the cache afterwards.
 TRANSCRIBER=0
 TRANSCRIBER_CACHE="build/.transcriber"
+# Cast to TV drives ytcast, another third-party binary, under the same rule.
+# It is pinned to one release and held to that release's published
+# checksums, so a moved tag or a swapped asset fails the build instead of
+# shipping inside the app.
+YTCAST=0
+YTCAST_CACHE="build/.ytcast"
+YTCAST_VERSION="v1.4.1"
+YTCAST_SHA256_ARM64="69db622ad4808895a3993260c41e80ba0655cedf54c204ec9230e36f6afd9bc2"
+YTCAST_SHA256_AMD64="1d769f973025b0c766f6fe70637bc85f962b1a4e0af9c5d800a1e24ccb6ba982"
 for arg in "$@"; do
     case "$arg" in
         --dev)     DEV=1 ;;
@@ -45,6 +54,7 @@ for arg in "$@"; do
         --test-suite=*) TEST=1; TEST_ARGS+=("--suite=${arg#*=}") ;;
         --list-tests) TEST=1; TEST_ARGS+=(--list) ;;
         --transcriber) TRANSCRIBER=1 ;;
+        --ytcast)  YTCAST=1 ;;
     esac
 done
 
@@ -581,6 +591,8 @@ if (( TEST )); then
         Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
         Sources/Vorssaint/Services/YouTubeTranscriber/YouTubeTranscriberSupport.swift
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
+        Sources/Vorssaint/Services/TVCast/TVCastSupport.swift
+        Sources/Vorssaint/Core/TVCastStrings.swift
         Sources/Vorssaint/Core/InputSourceSelection.swift
         Sources/Vorssaint/Services/SessionActivity.swift
         Sources/Vorssaint/Services/SessionActivitySupport.swift
@@ -803,9 +815,98 @@ stage_transcriber_helpers() {
     (( staged )) || rmdir "$bundle/Contents/Helpers" 2>/dev/null || true
 }
 
+fetch_ytcast_archive() {
+    local arch="$1"
+    local expected="$2"
+    local work="$3"
+    local name="ytcast-$YTCAST_VERSION-darwin-$arch"
+    local archive="$work/$name.tar.gz"
+    local actual
+    echo "  fetching $name…"
+    curl -fL --progress-bar -o "$archive" \
+        "https://github.com/MarcoLucidi01/ytcast/releases/download/$YTCAST_VERSION/$name.tar.gz"
+    actual="$(/usr/bin/shasum -a 256 "$archive" | /usr/bin/awk '{print $1}')"
+    if [[ "$actual" != "$expected" ]]; then
+        echo "✗ $name.tar.gz does not match the checksum pinned for ytcast $YTCAST_VERSION" >&2
+        echo "    expected $expected" >&2
+        echo "    got      $actual" >&2
+        exit 1
+    fi
+    tar -xzf "$archive" -C "$work" "$name/ytcast" "$name/license"
+}
+
+ytcast_pin_stamp() {
+    print -rn -- "$YTCAST_VERSION $YTCAST_SHA256_ARM64 $YTCAST_SHA256_AMD64"
+}
+
+ytcast_cache_current() {
+    [[ -x "$YTCAST_CACHE/ytcast" && -f "$YTCAST_CACHE/ytcast-license.txt" \
+        && -f "$YTCAST_CACHE/stamp" ]] || return 1
+    [[ "$(<"$YTCAST_CACHE/stamp")" == "$(ytcast_pin_stamp)" ]]
+}
+
+fetch_ytcast_helper() {
+    local binary="$YTCAST_CACHE/ytcast"
+    local license="$YTCAST_CACHE/ytcast-license.txt"
+    # The stamp is written last, after a fully verified fetch, and records the
+    # whole pin. A checksum-only bump leaves the reported version unchanged, so
+    # the stamp, not `-v`, decides whether the cache is current.
+    if ytcast_cache_current; then
+        return 0
+    fi
+    rm -f "$YTCAST_CACHE/stamp"
+
+    local work="$YTCAST_CACHE/work"
+    rm -rf "$work"
+    mkdir -p "$work"
+    fetch_ytcast_archive arm64 "$YTCAST_SHA256_ARM64" "$work"
+    fetch_ytcast_archive amd64 "$YTCAST_SHA256_AMD64" "$work"
+
+    local candidate="$work/ytcast"
+    lipo -create "$work/ytcast-$YTCAST_VERSION-darwin-arm64/ytcast" \
+        "$work/ytcast-$YTCAST_VERSION-darwin-amd64/ytcast" -output "$candidate"
+    chmod +x "$candidate"
+    # Go's linker signs only the arm64 build. An unsigned x86_64 slice inside
+    # Contents/Helpers makes codesign refuse the whole bundle, so sign both ad
+    # hoc here; an install signs the helper again with the real identity.
+    /usr/bin/codesign --force --strip-disallowed-xattrs --sign - "$candidate"
+
+    local reported
+    reported="$("$candidate" -v 2>/dev/null)" || true
+    if [[ "$reported" != "ytcast $YTCAST_VERSION" ]]; then
+        echo "✗ the fetched ytcast reports '$reported', not 'ytcast $YTCAST_VERSION'" >&2
+        exit 1
+    fi
+    cp "$work/ytcast-$YTCAST_VERSION-darwin-arm64/license" "$license"
+    mv "$candidate" "$binary"
+    rm -rf "$work"
+    print -rn -- "$(ytcast_pin_stamp)" > "$YTCAST_CACHE/stamp"
+}
+
+stage_ytcast_helper() {
+    local bundle="$1"
+    (( YTCAST )) || return 0
+    if ! ytcast_cache_current; then
+        echo "✗ the ytcast cache does not match the pinned version and checksums" >&2
+        exit 1
+    fi
+    mkdir -p "$bundle/Contents/Helpers"
+    cp "$YTCAST_CACHE/ytcast" "$bundle/Contents/Helpers/ytcast"
+    # MIT asks for the notice to travel with every copy. It sits in Resources,
+    # not beside the binary, because sign_transcriber_helpers signs every file
+    # in Contents/Helpers as code.
+    mkdir -p "$bundle/Contents/Resources/ThirdParty"
+    cp "$YTCAST_CACHE/ytcast-license.txt" "$bundle/Contents/Resources/ThirdParty/ytcast-license.txt"
+}
+
 if (( TRANSCRIBER )); then
     echo "▸ Fetching transcriber helpers…"
     fetch_transcriber_helpers
+fi
+
+if (( YTCAST )); then
+    echo "▸ Fetching ytcast…"
+    fetch_ytcast_helper
 fi
 
 echo "▸ Assembling and signing bundle…"
@@ -818,6 +919,7 @@ cp "build/$FAN_HELPER_ID" "$STAGE/Contents/Library/LaunchServices/$FAN_HELPER_ID
 mkdir -p "$STAGE/Contents/Frameworks"
 cp "build/$NOW_PLAYING_ADAPTER" "$STAGE/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
 stage_transcriber_helpers "$STAGE"
+stage_ytcast_helper "$STAGE"
 cp Resources/now-playing.pl "$STAGE/Contents/Resources/now-playing.pl"
 cp Resources/agent-prices.json "$STAGE/Contents/Resources/agent-prices.json"
 cp Resources/com.vorssaint.utils.fan-control.plist \

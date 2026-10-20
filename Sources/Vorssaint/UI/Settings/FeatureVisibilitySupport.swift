@@ -9,7 +9,7 @@ import Foundation
 enum SettingsPage: Hashable {
     case general, features, energy, monitor
     case mouse, switcher, dock, keyDebounce, superKey, cutPaste, autoQuit, quitProtection, cleaner, uninstaller, urlCleaner, homebrew, appUpdates, media, clipboard, windowLayout, shelf, quickTools, textSnippets, screenshot, radialMenu, commandBar, killProcess, portManager, notch, notchMascot
-    case layoutSwitcher, youtubeTranscriber
+    case layoutSwitcher, youtubeTranscriber, tvCast
     case shortcuts, advanced, about, releaseNotes, support
 }
 
@@ -313,6 +313,7 @@ extension AppFeature {
         case .keyboardDebounce: return FeatureSettingsDestination(.keyDebounce)
         case .layoutSwitcher: return FeatureSettingsDestination(.layoutSwitcher)
         case .youtubeTranscriber: return FeatureSettingsDestination(.youtubeTranscriber)
+        case .tvCast: return FeatureSettingsDestination(.tvCast)
         case .textSnippets: return FeatureSettingsDestination(.textSnippets)
         case .superKey: return FeatureSettingsDestination(.superKey)
 
@@ -425,6 +426,7 @@ enum FeatureVisibilitySupport {
         case .keyDebounce: return [.keyboardDebounce]
         case .layoutSwitcher: return [.layoutSwitcher]
         case .youtubeTranscriber: return [.youtubeTranscriber]
+        case .tvCast: return [.tvCast]
         case .superKey: return [.superKey]
         case .textSnippets: return [.textSnippets]
         case .screenshot: return [.screenshot, .screenRecorder, .screenOCR, .colorPicker]

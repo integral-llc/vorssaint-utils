@@ -1024,6 +1024,7 @@ extension AppFeature {
         case .layoutSwitcher: return FeatureStrings.layoutSwitcher(L10n.shared.language).pageTitle
         case .youtubeTranscriber:
             return FeatureStrings.youtubeTranscriber(L10n.shared.language).pageTitle
+        case .tvCast: return FeatureStrings.tvCast(L10n.shared.language).pageTitle
         case .mouseClickDebounce:
             return FeatureStrings.mouseClickDebounce(L10n.shared.language).title
         case .clipboardHistory: return FeatureStrings.clipboard(L10n.shared.language).title
@@ -1111,6 +1112,7 @@ extension AppFeature {
         case .layoutSwitcher: return FeatureStrings.layoutSwitcher(L10n.shared.language).hubDescription
         case .youtubeTranscriber:
             return FeatureStrings.youtubeTranscriber(L10n.shared.language).hubDescription
+        case .tvCast: return FeatureStrings.tvCast(L10n.shared.language).hubDescription
         case .mouseClickDebounce:
             return FeatureStrings.mouseClickDebounce(L10n.shared.language).caption
         case .clipboardHistory: return hub.descClipboardHistory

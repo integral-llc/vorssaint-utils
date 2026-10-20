@@ -587,6 +587,7 @@ struct SettingsView: View {
         case .keyDebounce: KeyboardDebounceSettings()
         case .layoutSwitcher: LayoutSwitcherSettings()
         case .youtubeTranscriber: YouTubeTranscriberSettings()
+        case .tvCast: TVCastSettings()
         case .superKey: SuperKeySettings()
         case .cutPaste: CutPasteSettings()
         case .autoQuit: AutoQuitSettings()

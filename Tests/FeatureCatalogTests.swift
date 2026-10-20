@@ -386,7 +386,7 @@ enum FeatureCatalogTests {
 
         // MARK: Features hub catalog
 
-        suite.expect(AppFeature.allCases.count == 79, "feature catalog has 79 features")
+        suite.expect(AppFeature.allCases.count == 80, "feature catalog has 80 features")
         suite.expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         suite.expect(AppFeature.allCases.map(\.rawValue) == [
@@ -401,6 +401,7 @@ enum FeatureCatalogTests {
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
             "radialMenu", "scratchpad", "commandBar", "screenRecorder", "wallpaper", "killProcess", "portManager", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads", "notchAgents", "notchWatch", "notchMascot",
             "youtubeTranscriber",
+            "tvCast",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
             "connectedDevices", "fanControl",
         ], "feature ids are stable (they persist inside availability keys)")
@@ -1408,6 +1409,17 @@ enum FeatureCatalogTests {
         suite.expect(AppFeature.youtubeTranscriber.onboardingPermissions.isEmpty
                 && !AppFeature.youtubeTranscriber.monitorsPermissionChanges(boolFor: { _ in true }),
                "the transcriber asks for folder access when it runs, not at first launch")
+        suite.expect(AppFeature.tvCast.permissions.isEmpty
+                && AppFeature.tvCast.enabledKeys.isEmpty
+                && AppFeature.tvCast.group == .tools
+                && AppFeature.tvCast.energyProfile == .idle,
+               "Cast to TV asks for nothing and costs nothing at rest")
+        suite.expect(AppFeature.tvCast.onboardingPermissions.isEmpty
+                && !AppFeature.tvCast.monitorsPermissionChanges(boolFor: { _ in true }),
+               "Cast to TV stays off the first-run permissions step and polls no permission")
+        suite.expect(AppFeature.availabilityDefaults[AppFeature.tvCast.availabilityKey] as? Bool == false
+                && !FeaturePreset.allCases.contains { $0.features.contains(.tvCast) },
+               "Cast to TV ships uninstalled and no preset installs it")
         suite.expect(AppFeature.layoutSwitcher.onboardingPermissions == [.accessibility],
                "a picked layout switcher is explained under Accessibility at first launch")
         suite.expect(!AppFeature.availabilityDefaults[AppFeature.layoutSwitcher.availabilityKey].flatMap { $0 as? Bool }!,
@@ -1760,6 +1772,29 @@ enum FeatureCatalogTests {
             suite.expect(Set(messages).count == failures.count
                     && messages.allSatisfy { !$0.isEmpty && !$0.contains("%") },
                    "every reason a run stopped reads differently and fills in (\(language.rawValue))")
+            let tvCastValues = Mirror(reflecting: FeatureStrings.tvCast(language))
+                .children.compactMap { $0.value as? String }
+            suite.expect(tvCastValues.count == 44 && tvCastValues.allSatisfy { !$0.isEmpty },
+                   "every Cast to TV string is set for \(language.rawValue)")
+            suite.expect(tvCastValues.allSatisfy { !$0.contains("\u{2014}") && !$0.contains("'") },
+                   "no em-dash or straight apostrophe in visible Cast to TV strings (\(language.rawValue))")
+            let tvCastText = FeatureStrings.tvCast(language)
+            let tvCastFailures: [TVCastFailure] = [
+                .helperMissing, .invalidCode, .pairingRejected, .deviceNotFound, .unreachable,
+                .playbackRejected, .offline, .timedOut, .cacheUnreadable, .failed("x"), .exited(2),
+            ]
+            let tvCastMessages = tvCastFailures.map { tvCastText.message(for: $0) }
+            suite.expect(Set(tvCastMessages).count == tvCastFailures.count
+                    && tvCastMessages.allSatisfy { !$0.isEmpty && !$0.contains("%") },
+                   "every reason a cast or pairing stopped reads differently (\(language.rawValue))")
+            let tvCastFormats = [tvCastText.sendingFormat, tvCastText.sentFormat, tvCastText.removeConfirmFormat,
+                                 tvCastText.pairedFormat, tvCastText.actionsFormat, tvCastText.failureOtherFormat]
+            suite.expect(tvCastFormats.allSatisfy { $0.components(separatedBy: "%@").count == 2 },
+                   "every Cast to TV format fills in exactly one value (\(language.rawValue))")
+            expectFormat(tvCastText.failureExitedFormat, ["d"],
+                         "the ytcast exit code fills in as one number (\(language.rawValue))")
+            suite.expect(tvCastText.message(for: .exited(7)).contains("7"),
+                   "the exit code reaches the message (\(language.rawValue))")
             let layoutSwitcherValues = Mirror(reflecting: FeatureStrings.layoutSwitcher(language))
                 .children.compactMap { $0.value as? String }
             suite.expect(layoutSwitcherValues.count == 14

@@ -209,6 +209,7 @@ struct MetricsTests {
             ("wallpaper", { WallpaperContract.run(suite) }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
             ("layout-detection", { LayoutDetectionTests.run(suite) }),
+            ("tv-cast", { TVCastTests.run(suite) }),
         ]
         var selected = Set<String>()
         var listOnly = false

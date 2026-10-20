@@ -179,6 +179,7 @@ enum ReleaseChangeAliases {
         // for shortcuts and the island, and would land on the wrong feature.
         case .layoutSwitcher: return ["layout switcher"]
         case .youtubeTranscriber: return ["transcriber", "youtube transcriber"]
+        case .tvCast: return ["cast to tv", "tv cast", "ytcast"]
         }
     }
 

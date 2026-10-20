@@ -102,6 +102,16 @@ rather than the bundle, after checking it against the release's SHA2-256SUMS.
 That check catches a damaged transfer; it is not a trust anchor. Nothing there
 runs on its own.
 
+Cast to TV shells out to [ytcast](https://github.com/MarcoLucidi01/ytcast),
+which `./build.sh --ytcast` bundles. It downloads the pinned v1.4.1 release for
+arm64 and x86_64 and refuses either archive unless its SHA-256 matches the
+checksum pinned in `build.sh`. It then merges the two into one universal
+binary, checks that it reports `ytcast v1.4.1`, and stages it in
+`Contents/Helpers`, with its MIT licence in `Contents/Resources/ThirdParty`.
+The result is cached under `build/.ytcast`. Moving to a newer release means
+changing the version and both checksums together. `just deploy` passes
+`--ytcast` too.
+
 ## Pull requests
 
 Explain the behavior before and after, the scope and validation. Use

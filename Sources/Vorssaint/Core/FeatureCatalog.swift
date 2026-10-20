@@ -33,6 +33,7 @@ enum AppFeature: String, CaseIterable {
     case notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics,
          notchQueue, notchLiveEqualizer, notchDownloads, notchAgents, notchWatch, notchMascot
     case youtubeTranscriber
+    case tvCast
     // System monitor, one entry per metric family (temperatures live with
     // their parent metric: CPU temp with CPU, battery temp with power).
     case monitorCPU, monitorGPU, monitorMemory, monitorNetwork, monitorDisk, monitorPower, connectedDevices, fanControl
@@ -84,7 +85,7 @@ extension AppFeature {
         // Watch asks when an area is chosen and checks on every reading. The
         // companion uses no permission at all.
         case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder, .wallpaper, .notchWatch,
-             .notchMascot, .youtubeTranscriber:
+             .notchMascot, .youtubeTranscriber, .tvCast:
             return false
         default:
             return true
@@ -118,7 +119,7 @@ extension AppFeature {
              .cleaner, .uninstaller, .homebrew, .appUpdates, .screenshot, .cameraPreview, .radialMenu,
              .scratchpad, .commandBar, .screenRecorder, .wallpaper, .killProcess, .portManager:
             return .tools
-        case .youtubeTranscriber:
+        case .youtubeTranscriber, .tvCast:
             return .tools
         case .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories,
              .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchAgents, .notchWatch,
@@ -205,6 +206,7 @@ extension AppFeature {
         case .commandBar: return "command"
         case .killProcess: return "xmark.octagon"
         case .youtubeTranscriber: return "text.bubble"
+        case .tvCast: return "tv"
         case .portManager: return "network"
         case .monitorCPU: return "cpu"
         case .monitorGPU: return "rectangle.connected.to.line.below"
@@ -294,7 +296,7 @@ extension AppFeature {
         case .windowLayout, .diskImageInstaller, .mixer, .micMute, .keepAwake,
              .quickLauncher, .quickToggles, .colorPicker, .screenOCR, .cleaningMode, .mediaTools,
              .cleaner, .uninstaller, .homebrew, .appUpdates, .screenshot, .cameraPreview, .scratchpad,
-             .commandBar, .screenRecorder, .wallpaper, .killProcess, .youtubeTranscriber, .portManager,
+             .commandBar, .screenRecorder, .wallpaper, .killProcess, .youtubeTranscriber, .tvCast, .portManager,
              .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .connectedDevices, .fanControl:
             return []
@@ -383,6 +385,9 @@ extension AppFeature {
         // Writing the transcript into Downloads, or the folder picked for it,
         // is what makes macOS ask; it asks on that first write, not up front.
         case .youtubeTranscriber: return [.filesAndFolders]
+        // ytcast reaches a code-paired TV through YouTube alone, and the
+        // service never lets it search the local network.
+        case .tvCast: return []
         case .uninstaller: return [.fullDiskAccess, .automationFinder]
         case .homebrew: return [.automationTerminal, .appManagement]
         case .appUpdates: return [.notifications, .appManagement]
@@ -494,7 +499,7 @@ extension AppFeature {
             return true
         case .focusFollowsMouse, .scrollHorizontal, .linearScroll, .diskImageInstaller, .audioPriority,
              .wallpaper, .killProcess, .portManager, .fanControl, .notchMascot, .spacesOrder,
-             .layoutSwitcher, .youtubeTranscriber:
+             .layoutSwitcher, .youtubeTranscriber, .tvCast:
             return false
         }
     }

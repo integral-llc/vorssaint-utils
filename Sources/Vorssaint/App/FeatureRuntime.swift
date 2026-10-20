@@ -264,6 +264,7 @@ final class FeatureRuntime: ObservableObject {
         .keyboardDebounce: { KeyboardDebounceService.shared.syncWithPreferences() },
         .layoutSwitcher: { LayoutSwitcherService.shared.syncWithPreferences() },
         .youtubeTranscriber: { YouTubeTranscriberService.shared.syncWithPreferences() },
+        .tvCast: { TVCastService.shared.syncWithPreferences() },
         .quitWindowProtection: { QuitProtectionService.shared.syncWithPreferences() },
         .superKey: { SuperKeyService.shared.syncWithPreferences() },
         .textSnippets: {
