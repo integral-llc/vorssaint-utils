@@ -20,6 +20,9 @@ struct NotchTVCastView: View {
 
     private var selectedID: String? { TVCastSupport.selectedDeviceID(pickedID, in: service.devices) }
     private var isIdle: Bool { service.activity == .idle }
+    private var canSendTypedLink: Bool {
+        isIdle && selectedID != nil && TVCastSupport.videoArgument(from: link) != nil
+    }
 
     var body: some View {
         Group {
@@ -43,7 +46,14 @@ struct NotchTVCastView: View {
         VStack(spacing: 10) {
             NotchPillButton(title: text.playCopiedLinkButton, prominent: true, action: playCopiedLink)
                 .disabled(!isIdle || selectedID == nil)
-            linkField
+            HStack(spacing: 8) {
+                linkField
+                // Return sends too, but a field alone gives no sign of it. Kept a
+                // pill while waiting for a link, so it still reads as a button.
+                NotchPillButton(title: text.sendButton, prominent: true, action: sendTypedLink)
+                    .disabled(!canSendTypedLink)
+                    .opacity(canSendTypedLink ? 1 : 0.45)
+            }
             NotchTVCastStatusLine(status: status)
         }
         .frame(maxWidth: 320)
@@ -113,7 +123,7 @@ struct NotchTVCastView: View {
 
     /// An invalid link already says so in the status line.
     private func sendTypedLink() {
-        guard isIdle, let id = selectedID, TVCastSupport.videoArgument(from: link) != nil else { return }
+        guard canSendTypedLink, let id = selectedID else { return }
         service.send(link, to: id)
     }
 }
