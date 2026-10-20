@@ -195,7 +195,10 @@ final class LayoutSwitcherService: ObservableObject {
         }
         guard AXIsProcessTrusted(), !IsSecureEventInputEnabled() else { return false }
 
-        let selection = CommandBarSelectionReader.readSelectedText()
+        // A page's selection read through text markers is not typed over:
+        // the letters would land in the page, not replace the word.
+        let read = CommandBarSelectionReader.readSelection()
+        let selection = read.typesOver ? read.text : ""
         let target = eventLock.withLock { () -> ShortcutTarget? in
             if !selection.isEmpty {
                 // A selection is already highlighted; one Delete clears it.
@@ -223,6 +226,9 @@ final class LayoutSwitcherService: ObservableObject {
 
         let replaced = TextSnippetService.postExpansion(
             deleteCount: target.deleteCount,
+            // A highlighted selection goes with one Delete; there is no typed
+            // text in front of it to clear a completion after.
+            typedTrigger: selection.isEmpty ? target.word + target.suffix : "",
             text: corrected + target.suffix,
             trailingKeyCode: nil,
             trailingFlags: []
@@ -643,11 +649,13 @@ final class LayoutSwitcherService: ObservableObject {
         switch finished.ending {
         case .space:
             return TextSnippetService.postExpansion(deleteCount: finished.token.count + 1,
+                                                    typedTrigger: finished.token + " ",
                                                     text: replacement + " ",
                                                     trailingKeyCode: nil,
                                                     trailingFlags: [])
         case .punctuation:
             return TextSnippetService.postExpansion(deleteCount: finished.token.count,
+                                                    typedTrigger: finished.token,
                                                     text: replacement,
                                                     trailingKeyCode: nil,
                                                     trailingFlags: [])
@@ -656,9 +664,12 @@ final class LayoutSwitcherService: ObservableObject {
             // deleting and retyping would send a second one. The text is only
             // touched when it shows the word with a new line after it.
             let expected = finished.token + "\n"
-            guard CommandBarSelectionReader.readTextBeforeCaret(length: expected.utf16.count) == expected
+            guard NSWorkspace.shared.frontmostApplication.flatMap({
+                SelectedTextReader.textBeforeCaret(processID: $0.processIdentifier, length: expected.utf16.count)
+            }) == expected
             else { return true }
             return TextSnippetService.postExpansion(deleteCount: finished.token.count + 1,
+                                                    typedTrigger: expected,
                                                     text: replacement,
                                                     trailingKeyCode: CGKeyCode(kVK_Return),
                                                     trailingFlags: finished.flags.intersection([.maskShift, .maskAlternate]))

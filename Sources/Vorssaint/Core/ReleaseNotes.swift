@@ -53,7 +53,7 @@ struct ReleaseNotes {
         return body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func bundledChangelog() -> String? {
+    static func bundledChangelog() -> String? {
         guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md") else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)
     }
