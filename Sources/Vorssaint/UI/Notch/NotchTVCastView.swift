@@ -15,6 +15,10 @@ struct NotchTVCastView: View {
     /// Play Copied Link found nothing to play. Cleared by typing, and by any
     /// send starting, here or in Settings.
     @State private var copiedLinkMissing = false
+    /// The link the field sent, until that send ends. Only its success
+    /// clears the field: a typed link survives Play Copied Link or a send
+    /// from Settings, and a failed send keeps it for another try.
+    @State private var sentFromField: String?
     @FocusState private var linkFocused: Bool
     private var text: TVCastStrings { FeatureStrings.tvCast(l10n.language) }
 
@@ -38,7 +42,7 @@ struct NotchTVCastView: View {
         .onAppear { service.reload() }
         .onChange(of: link) { copiedLinkMissing = false }
         .onChange(of: service.activity) { _, activity in
-            if activity != .idle { copiedLinkMissing = false }
+            if activity == .idle { finishFieldSend() } else { copiedLinkMissing = false }
         }
     }
 
@@ -124,7 +128,18 @@ struct NotchTVCastView: View {
     /// An invalid link already says so in the status line.
     private func sendTypedLink() {
         guard canSendTypedLink, let id = selectedID else { return }
+        sentFromField = link
         service.send(link, to: id)
+    }
+
+    /// Empties the field for the next link once its own send played, and
+    /// takes focus back, which the field lost while it was disabled.
+    private func finishFieldSend() {
+        guard let sent = sentFromField else { return }
+        sentFromField = nil
+        guard case .sent = service.outcome, link == sent else { return }
+        link = ""
+        linkFocused = true
     }
 }
 
