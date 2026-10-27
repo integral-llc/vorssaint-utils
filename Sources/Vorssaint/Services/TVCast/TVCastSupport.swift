@@ -154,6 +154,18 @@ enum TVCastSupport {
         }
     }
 
+    /// The pairing a playback control uses. Nil for a discovered TV, as for
+    /// a cast: a TV paired with a code is the only one reached through
+    /// YouTube alone.
+    static func loungeScreen(for id: String, inCache data: Data?) -> TVCastLoungeScreen? {
+        guard let entry = cacheEntries(data)?.first(where: { isCodePaired($0) && entryID($0) == id }),
+              let screen = screenID(entry),
+              let remote = entry["Remote"] as? [String: Any],
+              let token = remote["LoungeToken"] as? String, !token.isEmpty else { return nil }
+        let expiration = (remote["Expiration"] as? NSNumber)?.int64Value ?? 0
+        return TVCastLoungeScreen(screenID: screen, loungeToken: token, expiration: expiration)
+    }
+
     /// The TV a pairing added or replaced, found by comparing the cache
     /// before and after it. LastUsed is ignored: every send rewrites it, and
     /// it says nothing about a pairing.

@@ -14,6 +14,12 @@ struct TVCastStrings {
     let playCopiedLinkButton: String
     let sendingFormat: String
     let sentFormat: String
+    let playbackLabel: String
+    let playButton: String
+    let pauseButton: String
+    let stopButton: String
+    let pausedFormat: String
+    let stoppedFormat: String
     let invalidVideo: String
     let noCopiedLink: String
     let keepYouTubeOpenHint: String
@@ -53,6 +59,23 @@ struct TVCastStrings {
     let failureCacheUnreadable: String
     let failureExitedFormat: String
     let failureOtherFormat: String
+
+    func title(for playback: TVCastPlayback) -> String {
+        switch playback {
+        case .play: return playButton
+        case .pause: return pauseButton
+        case .stop: return stopButton
+        }
+    }
+
+    /// What YouTube took the command as. Play says what a send says.
+    func controlledMessage(_ playback: TVCastPlayback, on name: String) -> String {
+        switch playback {
+        case .play: return String(format: sentFormat, name)
+        case .pause: return String(format: pausedFormat, name)
+        case .stop: return String(format: stoppedFormat, name)
+        }
+    }
 
     func message(for failure: TVCastFailure) -> String {
         switch failure {

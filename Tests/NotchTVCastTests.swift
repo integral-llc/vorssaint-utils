@@ -14,6 +14,38 @@ enum NotchTVCastTests {
         savedListContracts(suite)
         pageContracts(suite)
         heightContracts(suite)
+        playbackContracts(suite)
+    }
+
+    /// Play, pause and stop end the top row. Beside the camera its side is at
+    /// its narrowest the page's band side past the clearance; across the top
+    /// the whole row holds them.
+    private static func playbackContracts(_ suite: TestSuite) {
+        let screen = CGRect(x: 0, y: 0, width: 1710, height: 1112)
+        var sizes: [(NotchSize, Double)] = [(.compact, NotchSize.defaultWidth), (.spacious, NotchSize.defaultWidth)]
+        sizes += stride(from: NotchSize.widthRange.lowerBound, through: NotchSize.widthRange.upperBound, by: 20)
+            .map { (.custom, $0) }
+        var fits = true, wrapped = 0, narrowest = CGFloat.infinity
+        for camera in [CGFloat(0), 156, 170, 180, 185, 190, 200, 208, 210, 224] {
+            for (size, width) in sizes {
+                for sectionsButton in [false, true] {
+                    let page = NotchGeometry(screen: screen, safeAreaTop: camera > 0 ? 32 : 0, cameraWidth: camera,
+                                             layout: size, customWidth: width, silhouette: camera > 0 ? .notch : .capsule)
+                        .page(.tvCast, controls: [], sectionsButton: sectionsButton)
+                    let band = NotchBand(geometry: page, contentWidth: page.contentWidth)
+                    if band.besideCamera {
+                        wrapped += 1
+                        narrowest = min(narrowest, band.side)
+                    }
+                    fits = fits && NotchLayout.tvCastPlaybackWidth <= band.side
+                }
+            }
+        }
+        suite.expect(NotchLayout.tvCastPlaybackWidth == 92,
+                     "three 28-point buttons, 4 apart: \(NotchLayout.tvCastPlaybackWidth)")
+        suite.expect(fits && wrapped > 0,
+                     "play, pause and stop fit the top row beside every camera at every island width, "
+                        + "down to \(Int(narrowest)) points")
     }
 
     /// A short page keeps a short island at every chosen size: a custom size

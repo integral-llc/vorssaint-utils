@@ -27,6 +27,7 @@ enum TVCastTests {
         failureRules(suite)
         networkFailureRules(suite)
         serviceSourceRules(suite)
+        TVCastLoungeTests.run(suite)
     }
 
     // MARK: Fixtures

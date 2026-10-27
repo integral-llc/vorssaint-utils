@@ -13,12 +13,22 @@ enum TVCastActivity: Equatable {
     case pairing
     /// Carries the name of the TV the video is going to.
     case sending(String)
+    /// A playback control on its way, with the TV's name.
+    case controlling(String)
+
+    /// The TV a send or a control is on its way to.
+    var tvName: String? {
+        switch self {
+        case .sending(let name), .controlling(let name): return name
+        case .idle, .pairing: return nil
+        }
+    }
 }
 
 /// Which kind of request an outcome answers, so Settings shows a failure
 /// beside the control that caused it rather than under every section.
 enum TVCastRequest: Equatable {
-    case pair, send, edit
+    case pair, send, edit, control
 }
 
 /// How the latest request ended.
@@ -29,6 +39,8 @@ enum TVCastOutcome: Equatable {
     /// The TVs an import from the command line's ytcast added, none when the
     /// list already had them all, so Settings can pick one.
     case imported(ids: [String])
+    /// YouTube took the command for the named TV.
+    case controlled(TVCastPlayback, String)
     case failed(TVCastFailure, during: TVCastRequest)
 }
 
@@ -160,6 +172,20 @@ final class TVCastService: ObservableObject {
         let cancellation = beginRun()
         queue.async { [weak self] in
             let result = Self.performSend(video: video, to: id, name: name, cancellation: cancellation)
+            self?.finishRun(cancellation, with: result)
+        }
+    }
+
+    /// Play, pause or stop what YouTube plays on the TV. No ytcast runs:
+    /// it has no such command, so the service asks YouTube itself.
+    func control(_ playback: TVCastPlayback, on id: String) {
+        guard activity == .idle, AppFeature.tvCast.isAvailable else { return }
+        let name = devices.first { $0.id == id }?.name ?? id
+        activity = .controlling(name)
+        outcome = nil
+        let cancellation = beginRun()
+        queue.async { [weak self] in
+            let result = Self.performControl(playback, on: id, name: name, cancellation: cancellation)
             self?.finishRun(cancellation, with: result)
         }
     }
@@ -301,6 +327,24 @@ final class TVCastService: ObservableObject {
             return .failed(failure, during: .send)
         }
         return .sent(name)
+    }
+
+    /// Only a TV paired with a code, as for a cast: YouTube reaches it alone.
+    /// The list is read and never written.
+    private static func performControl(_ playback: TVCastPlayback, on id: String, name: String,
+                                       cancellation: BoundedProcessCancellation) -> TVCastOutcome {
+        guard let screen = TVCastSupport.loungeScreen(for: id, inCache: readCache()) else {
+            return .failed(.deviceNotFound, during: .control)
+        }
+        switch TVCastLoungeClient.perform(playback, on: screen, cancellation: cancellation) {
+        case .success:
+            return .controlled(playback, name)
+        case .failure(let failure):
+            if !cancellation.isCancelled {
+                log.error("a playback control failed: \(String(describing: failure), privacy: .public)")
+            }
+            return .failed(failure, during: .control)
+        }
     }
 
     /// ytcast's output when it succeeded. `snapshot` is the cache as it was

@@ -1949,7 +1949,7 @@ enum FeatureCatalogTests {
                    "every reason a run stopped reads differently and fills in (\(language.rawValue))")
             let tvCastValues = Mirror(reflecting: FeatureStrings.tvCast(language))
                 .children.compactMap { $0.value as? String }
-            suite.expect(tvCastValues.count == 49 && tvCastValues.allSatisfy { !$0.isEmpty },
+            suite.expect(tvCastValues.count == 55 && tvCastValues.allSatisfy { !$0.isEmpty },
                    "every Cast to TV string is set for \(language.rawValue)")
             suite.expect(tvCastValues.allSatisfy { !$0.contains("\u{2014}") && !$0.contains("'") },
                    "no em-dash or straight apostrophe in visible Cast to TV strings (\(language.rawValue))")

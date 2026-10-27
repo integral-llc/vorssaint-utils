@@ -26,6 +26,8 @@ struct TVCastSettings: View {
     private var selectedID: String? { TVCastSupport.selectedDeviceID(pickedID, in: service.devices) }
     private var linkIsValid: Bool { TVCastSupport.videoArgument(from: link) != nil }
     private var canSend: Bool { linkIsValid && selectedID != nil && isIdle && service.isHelperInstalled }
+    /// No ytcast is needed: a control goes to YouTube directly.
+    private var canControl: Bool { selectedID != nil && isIdle }
     private var canPair: Bool {
         TVCastSupport.pairingCode(from: code) != nil && isIdle && service.isHelperInstalled
     }
@@ -118,10 +120,29 @@ struct TVCastSettings: View {
                 }
                 Button(text.sendButton, action: send)
                     .disabled(!canSend)
-                statusRow(progress: sendProgress, success: sendSuccess, failure: failure(during: .send))
+                playbackRow
+                statusRow(progress: sendProgress, success: sendSuccess,
+                          failure: failure(during: .send) ?? failure(during: .control))
                 Text(text.keepYouTubeOpenHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Glyphs, named by their help and to VoiceOver, so the row fits in
+    /// every language. One button per command: the TV's state is not known.
+    private var playbackRow: some View {
+        LabeledContent(text.playbackLabel) {
+            HStack(spacing: 8) {
+                ForEach(TVCastPlayback.allCases, id: \.self) { playback in
+                    Button { control(playback) } label: {
+                        Label(text.title(for: playback), systemImage: playback.symbol)
+                            .labelStyle(.iconOnly)
+                    }
+                    .help(text.title(for: playback))
+                    .disabled(!canControl)
+                }
             }
         }
     }
@@ -267,13 +288,15 @@ struct TVCastSettings: View {
     }
 
     private var sendProgress: String? {
-        guard case .sending(let name) = service.activity else { return nil }
-        return String(format: text.sendingFormat, name)
+        service.activity.tvName.map { String(format: text.sendingFormat, $0) }
     }
 
     private var sendSuccess: String? {
-        guard case .sent(let name) = service.outcome else { return nil }
-        return String(format: text.sentFormat, name)
+        switch service.outcome {
+        case .sent(let name): return String(format: text.sentFormat, name)
+        case .controlled(let playback, let name): return text.controlledMessage(playback, on: name)
+        default: return nil
+        }
     }
 
     private var pairSuccess: String? {
@@ -296,6 +319,11 @@ struct TVCastSettings: View {
     private func send() {
         guard canSend, let id = selectedID else { return }
         service.send(link, to: id)
+    }
+
+    private func control(_ playback: TVCastPlayback) {
+        guard canControl, let id = selectedID else { return }
+        service.control(playback, on: id)
     }
 
     private func pair() {

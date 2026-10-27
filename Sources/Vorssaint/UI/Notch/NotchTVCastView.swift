@@ -4,9 +4,10 @@
 import AppKit
 import SwiftUI
 
-/// Cast to TV in the island: the TV heads the top row, and the page plays
-/// the link just copied, or one pasted into its field. Pairing and the list
-/// of TVs stay on the feature's page in Settings, where an empty page leads.
+/// Cast to TV in the island: the TV heads the top row, its playback
+/// controls end it, and the page plays the link just copied, or one pasted
+/// into its field. Pairing and the list of TVs stay on the feature's page in
+/// Settings, where an empty page leads.
 struct NotchTVCastView: View {
     @ObservedObject private var service = TVCastService.shared
     @ObservedObject private var l10n = L10n.shared
@@ -35,7 +36,7 @@ struct NotchTVCastView: View {
             } else if service.devices.isEmpty {
                 NotchTVCastSetupView()
             } else {
-                player.notchBand(leading: { tvMenu })
+                player.notchBand(leading: { tvMenu }, trailing: { playbackControls })
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -78,6 +79,20 @@ struct NotchTVCastView: View {
         .accessibilityValue(name)
     }
 
+    /// Beside the camera, as the Watch page's actions are. What the TV is
+    /// doing is not known here, so each command has its own button rather
+    /// than one toggle that could offer the wrong one.
+    private var playbackControls: some View {
+        HStack(spacing: NotchLayout.tvCastPlaybackSpacing) {
+            ForEach(TVCastPlayback.allCases, id: \.self) { playback in
+                NotchIconButton(symbol: playback.symbol, title: text.title(for: playback)) {
+                    if let id = selectedID { service.control(playback, on: id) }
+                }
+                .disabled(!isIdle || selectedID == nil)
+            }
+        }
+    }
+
     private var linkField: some View {
         TextField(text.videoLinkLabel, text: $link, prompt: Text(text.videoLinkPlaceholder))
             .textFieldStyle(.plain)
@@ -95,10 +110,11 @@ struct NotchTVCastView: View {
             .accessibilityLabel(text.videoLinkLabel)
     }
 
-    /// What is happening now first, then what the page or the last send has
-    /// to say, and otherwise the reminder Settings gives beside its button.
+    /// What is happening now first, then what the page or the last send or
+    /// control has to say, and otherwise the reminder Settings gives beside
+    /// its button.
     private var status: NotchTVCastStatusLine.Status {
-        if case .sending(let name) = service.activity {
+        if let name = service.activity.tvName {
             return .init(kind: .progress, message: String(format: text.sendingFormat, name))
         }
         if copiedLinkMissing { return .init(kind: .warning, message: text.noCopiedLink) }
@@ -108,7 +124,10 @@ struct NotchTVCastView: View {
         }
         switch service.outcome {
         case .sent(let name): return .init(kind: .success, message: String(format: text.sentFormat, name))
-        case .failed(let failure, during: .send): return .init(kind: .warning, message: text.message(for: failure))
+        case .controlled(let playback, let name):
+            return .init(kind: .success, message: text.controlledMessage(playback, on: name))
+        case .failed(let failure, during: .send), .failed(let failure, during: .control):
+            return .init(kind: .warning, message: text.message(for: failure))
         default: return .init(kind: .hint, message: text.keepYouTubeOpenHint)
         }
     }
