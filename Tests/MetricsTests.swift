@@ -37,7 +37,10 @@ struct MetricsTests {
                 SuperKeyTapContract.run(suite)
                 PointerScreenContract.run(suite)
             }),
-            ("scroll-modifier", { ScrollHorizontalModifierTests.run(suite) }),
+            ("scroll-modifier", {
+                ScrollHorizontalModifierTests.run(suite)
+                ScrollZoomFocusTests.run(suite)
+            }),
             ("linear-scroll", { LinearScrollTapTests.run(suite) }),
             ("preferences", { PreferencesFeatureTests.run(suite) }),
             ("app-management", {
@@ -133,6 +136,8 @@ struct MetricsTests {
                 UtilitiesFeatureTests.run(suite)
                 TextSnippetExpansionTests.run(suite)
                 QuickTogglesAlertTests.run(suite)
+                QuickTogglesQuitAllTests.run(suite)
+                QuitAppsRuntimeTests.run(suite)
                 PortManagerRefreshTests.run(suite)
             }),
             ("settings", {
@@ -220,7 +225,10 @@ struct MetricsTests {
                 KeepAwakeLidSleepTests.run { suite.expect($0, $1) }
                 KeepAwakeTimerHandoffTests.run { suite.expect($0, $1) }
             }),
-            ("wallpaper", { WallpaperContract.run(suite) }),
+            ("wallpaper", {
+                WallpaperContract.run(suite)
+                WallpaperThumbnailTests.run(suite)
+            }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
             ("layout-detection", { LayoutDetectionTests.run(suite) }),
             ("tv-cast", { TVCastTests.run(suite) }),
