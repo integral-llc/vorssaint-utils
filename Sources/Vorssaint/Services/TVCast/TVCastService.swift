@@ -323,10 +323,12 @@ final class TVCastService: ObservableObject {
         guard TVCastSupport.devices(fromCache: snapshot).contains(where: { $0.id == id && $0.pairedWithCode }) else {
             return .failed(.deviceNotFound, during: .send)
         }
-        if case .failure(let failure) = run(.cast(deviceID: id, video: video), snapshot: snapshot,
-                                            cancellation: cancellation) {
-            return .failed(failure, during: .send)
+        let cast = run(.cast(deviceID: id, video: video), snapshot: snapshot, cancellation: cancellation)
+        // A failed cast may have joined before it failed.
+        if let screen = TVCastSupport.loungeScreen(for: id, inCache: snapshot) {
+            TVCastLoungeChannel.shared.rejoin(screen.screenID)
         }
+        if case .failure(let failure) = cast { return .failed(failure, during: .send) }
         return .sent(name)
     }
 

@@ -119,6 +119,22 @@ final class TVCastLoungeChannel: NSObject, URLSessionDataDelegate {
         }
     }
 
+    /// ytcast joins as the same remote id, and YouTube then tells only the
+    /// newest join what the TV does: the session held here stays open, fails
+    /// nothing and hears nothing. Called once a cast is over, it joins again
+    /// now when the TV is in view, else on the next look.
+    func rejoin(_ screenID: String) {
+        queue.async { [self] in
+            guard let remote, remote.screen.screenID == screenID else { return }
+            remote.session = nil
+            endStream()
+            guard watching else { return }
+            cancelRetry()
+            failures = 0
+            refresh()
+        }
+    }
+
     /// Sends a control from the service's queue and waits for YouTube's
     /// answer. The TV in view shares its session; another TV gets one of its
     /// own, which the next look at that TV takes up when nothing is in view.

@@ -380,6 +380,16 @@ enum TVCastLoungeTests {
                      "a control finds the TV paired with a code first, runs no ytcast and writes no list")
         suite.expect(service.contains("TVCastLoungeChannel.shared.stop()"),
                      "switching the feature off ends the TV's session")
+        let send = service.components(separatedBy: "private static func performSend(").dropFirst().first?
+            .components(separatedBy: "private static func performControl(").first ?? ""
+        let rejoinsAfterCast: Bool = {
+            guard let cast = send.range(of: "run(.cast("),
+                  let rejoin = send.range(of: "TVCastLoungeChannel.shared.rejoin("),
+                  let failed = send.range(of: ".failed(failure, during: .send)") else { return false }
+            return cast.upperBound <= rejoin.lowerBound && rejoin.upperBound <= failed.lowerBound
+        }()
+        suite.expect(rejoinsAfterCast,
+                     "ytcast joins as the same remote, so after every cast, sent or not, the session joins again")
         let channel = source("Sources/Vorssaint/Services/TVCast/TVCastLoungeChannel.swift")
         let configured = { (needle: String) in channel.components(separatedBy: needle).count == 3 }
         suite.expect(!channel.isEmpty && !channel.contains("URLRequest(") && !channel.contains("URL(")
