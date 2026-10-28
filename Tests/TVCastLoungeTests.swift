@@ -3,8 +3,9 @@
 
 import Foundation
 
-/// The playback controls speak YouTube's Lounge API themselves, in ytcast
-/// v1.4.1's own requests, and only read the TV list.
+/// The playback controls and the island's player speak YouTube's Lounge API
+/// themselves, in ytcast v1.4.1's own requests and pyytlounge's for what
+/// ytcast never sends, and only read the TV list.
 enum TVCastLoungeTests {
     static func run(_ suite: TestSuite) {
         commandRules(suite)
@@ -12,8 +13,15 @@ enum TVCastLoungeTests {
         expiryRules(suite)
         bindRequestRules(suite)
         commandRequestRules(suite)
+        subscribeRequestRules(suite)
         renewalRules(suite)
         sessionRules(suite)
+        frameRules(suite)
+        eventRules(suite)
+        liveStateRules(suite)
+        clockRules(suite)
+        lookupRules(suite)
+        displayLinkRules(suite)
         failureRules(suite)
         stringRules(suite)
         sourceRules(suite)
@@ -95,15 +103,35 @@ enum TVCastLoungeTests {
 
     private static func commandRequestRules(_ suite: TestSuite) {
         for playback in TVCastPlayback.allCases {
-            let request = TVCastLounge.commandRequest(playback, token: "tok", session: session)
+            let request = TVCastLounge.commandRequest(playback.command, token: "tok", session: session, number: 1)
             suite.expect(request.httpMethod == "POST"
                          && request.url?.path == "/api/lounge/bc/bind"
                          && query(request) == ["CVER": "1", "RID": "2", "SID": "sid-1", "VER": "8",
                                                "gsessionid": "gs-1", "loungeIdToken": "tok"]
-                         && body(request) == "count=1&req0__sc=\(playback.command)"
+                         && body(request) == "count=1&ofs=1&req0__sc=\(playback.command)"
                          && request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded",
-                         "\(playback.command) goes in the shape of ytcast's Play, after the bind")
+                         "\(playback.command) goes in the shape of ytcast's Play, first after the bind")
         }
+        let third = TVCastLounge.commandRequest(TVCastLounge.nowPlayingCommand, token: "tok", session: session, number: 3)
+        suite.expect(query(third)["RID"] == "4" && body(third) == "count=1&ofs=3&req0__sc=getNowPlaying",
+                     "later commands on one session count on, as pyytlounge numbers them")
+        suite.expect(TVCastLounge.sessionLost(status: 400) && TVCastLounge.sessionLost(status: 404)
+                     && TVCastLounge.sessionLost(status: 410)
+                     && !TVCastLounge.sessionLost(status: 401) && !TVCastLounge.sessionLost(status: 200),
+                     "an unknown or gone session is joined again; a turned-down token is renewed instead")
+    }
+
+    private static func subscribeRequestRules(_ suite: TestSuite) {
+        let request = TVCastLounge.subscribeRequest(token: "a+b", session: session, lastEventID: 7)
+        suite.expect(request.httpMethod == "GET" && request.httpBody == nil
+                     && request.url?.path == "/api/lounge/bc/bind"
+                     && query(request) == ["name": "ytcast", "loungeIdToken": "a+b", "SID": "sid-1", "AID": "7",
+                                           "gsessionid": "gs-1", "device": "REMOTE_CONTROL", "app": "youtube-desktop",
+                                           "VER": "8", "v": "2", "RID": "rpc", "CI": "0", "TYPE": "xmlhttp"],
+                     "the stream asks for the session's events past the last one read, as pyytlounge subscribes")
+        suite.expect(request.value(forHTTPHeaderField: "Origin") == "https://www.youtube.com"
+                     && request.value(forHTTPHeaderField: "User-Agent")?.contains("Chrome/96.0.4664.45") == true,
+                     "the stream comes from the same remote as every other request")
     }
 
     private static func renewalRules(_ suite: TestSuite) {
@@ -141,12 +169,165 @@ enum TVCastLoungeTests {
         suite.expect(TVCastLounge.session(status: 200, body: reply)
                      == TVCastLoungeSession(sid: "sid-foo-bar-baz", gsessionID: "gsessionid-foo-bar-baz"),
                      "the session ids come out of the bind's events past its length")
+        suite.expect(TVCastLounge.messages(inReply: reply).map(\.id) == [0, 1, 2, 3, 4, 5],
+                     "every event of the bind is read, so the stream starts after the last")
         let noGsession = Data("10\n[[0,[\"c\",\"sid\",\"\",8]]]".utf8)
         suite.expect(TVCastLounge.session(status: 200, body: noGsession) == nil
                      && TVCastLounge.session(status: 400, body: reply) == nil
                      && TVCastLounge.session(status: 200, body: Data("no events".utf8)) == nil
                      && TVCastLounge.session(status: 200, body: Data("[[0,[\"c\",7]],[1]]".utf8)) == nil,
                      "a reply without both ids, an error status or no events joins nothing")
+    }
+
+    private static func frames(_ chunks: [String]) -> (frames: [String], overflowed: Bool) {
+        var splitter = TVCastLoungeFrames()
+        let found = chunks.flatMap { splitter.append(Data($0.utf8)) }.map { String(decoding: $0, as: UTF8.self) }
+        return (found, splitter.overflowed)
+    }
+
+    private static func frameRules(_ suite: TestSuite) {
+        let one = #"[[1,["noop"]]]"#
+        suite.expect(frames(["14\n" + one]).frames == [one],
+                     "a frame is the array after its length")
+        suite.expect(frames(["14\n[[1,[\"no", "op\"]]]\n", "14\n" + one]).frames == [one, one],
+                     "a frame split across reads comes out whole, and the next one after it")
+        let tricky = #"[[2,["x",{"a":"] [ \" ]","b":"Salón"}]]]"#
+        suite.expect(frames(["40\n" + tricky + "\n14\n" + one]).frames == [tricky, one],
+                     "brackets and escaped quotes inside strings, and non-ASCII names, do not end a frame")
+        let open = "9\n[[1,[\"" + String(repeating: "x", count: TVCastLoungeFrames.maxPending)
+        let overflow = frames([open, "\"]]]"])
+        suite.expect(overflow.overflowed && overflow.frames.isEmpty,
+                     "a frame that never closes is dropped once it runs past any the API sends")
+    }
+
+    private static func eventRules(_ suite: TestSuite) {
+        let frame = Data(#"""
+            [[3,["nowPlaying",{"videoId":"jfKfPfyJRdk","currentTime":"101.5","duration":"213","state":"1"}]]
+            ,[4,["onStateChange",{"currentTime":"102","duration":"213","state":"2"}]]
+            ,[5,["nowPlaying",{}]]
+            ,[6,["loungeStatus",{"devices":"[{\"type\":\"LOUNGE_SCREEN\",\"name\":\"TV\"}]"}]]
+            ,[7,["loungeStatus",{"devices":"[{\"type\":\"REMOTE_CONTROL\"}]"}]]
+            ,[8,["loungeStatus",{}]]
+            ,[9,["loungeScreenDisconnected",{}]]
+            ,[10,["onVolumeChanged",{"volume":"20"}]]
+            ,"garbage",[11]
+            ]
+            """#.utf8)
+        let messages = TVCastLounge.messages(in: frame)
+        suite.expect(messages.map(\.id) == [3, 4, 5, 6, 7, 8, 9, 10],
+                     "each event keeps its id, and an entry of another shape is skipped: \(messages.map(\.id))")
+        suite.expect(messages.map(\.event) == [
+            .nowPlaying(TVCastPlayerReport(videoID: "jfKfPfyJRdk", position: 101.5, duration: 213, state: 1)),
+            .stateChanged(TVCastPlayerReport(videoID: nil, position: 102, duration: 213, state: 2)),
+            .nowPlaying(nil),
+            .loungeStatus(screenPresent: true),
+            .loungeStatus(screenPresent: false),
+            .loungeStatus(screenPresent: nil),
+            .screenDisconnected,
+            .other,
+        ], "YouTube's string numbers, an empty nowPlaying and who the session lists all read as the TV meant")
+        suite.expect(TVCastLounge.messages(in: Data("not json".utf8)).isEmpty
+                     && TVCastLounge.messages(in: Data(#"{"a":1}"#.utf8)).isEmpty,
+                     "a frame that is not a list of events holds none")
+    }
+
+    private static func report(_ state: Int, at position: TimeInterval = 10,
+                               video: String? = "jfKfPfyJRdk") -> TVCastPlayerReport {
+        TVCastPlayerReport(videoID: video, position: position, duration: 200, state: state)
+    }
+
+    private static func liveStateRules(_ suite: TestSuite) {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var state = TVCastLiveState()
+        suite.expect(state.link == .connecting && state.player == nil, "a new look starts out connecting")
+        suite.expect(!state.apply(.nowPlaying(report(1)), at: start)
+                     && state.link == .connected && state.player?.videoID == "jfKfPfyJRdk"
+                     && state.player?.phase == .playing,
+                     "what the TV plays connects the page and names the video")
+        state.apply(.stateChanged(report(2, at: 30, video: nil)), at: start.addingTimeInterval(5))
+        suite.expect(state.player?.videoID == "jfKfPfyJRdk" && state.player?.phase == .paused
+                     && state.player?.position == 30,
+                     "a state change keeps the video and takes the TV's clock")
+        state.expect(.play, at: start.addingTimeInterval(6))
+        suite.expect(state.player?.phase == .playing && state.player?.position == 30,
+                     "a play YouTube took shows at once, from where the clock stood")
+        state.expect(.pause, at: start.addingTimeInterval(8))
+        suite.expect(state.player?.phase == .paused && state.player?.position == 32,
+                     "a pause stops the clock where it ran to")
+        state.expect(.stop, at: start.addingTimeInterval(9))
+        suite.expect(state.player == nil, "a stop clears the player")
+        suite.expect(state.apply(.stateChanged(report(1, video: nil)), at: start) && state.player == nil,
+                     "a state change with no known video asks what plays")
+        suite.expect(!state.apply(.stateChanged(report(0, video: nil)), at: start),
+                     "an ended video with none known asks nothing")
+        state.apply(.nowPlaying(report(1, video: "not an id")), at: start)
+        suite.expect(state.player == nil, "a video id of the wrong shape is never shown or looked up")
+        state.apply(.nowPlaying(report(1)), at: start)
+        state.apply(.loungeStatus(screenPresent: nil), at: start)
+        suite.expect(state.link == .connected && state.player != nil, "a status that lists no one changes nothing")
+        state.apply(.loungeStatus(screenPresent: false), at: start)
+        suite.expect(state.link == .away && state.player == nil, "a session without the TV is away and plays nothing")
+        state.apply(.loungeStatus(screenPresent: true), at: start)
+        state.apply(.nowPlaying(report(2)), at: start)
+        state.apply(.screenDisconnected, at: start)
+        suite.expect(state.link == .away && state.player == nil, "the TV leaving takes its video with it")
+        suite.expect([1, 3, 1081, 1082, 2, 5, 0, -1, 99].map(TVCastPlayer.phase(for:))
+                     == [.playing, .buffering, .buffering, .buffering, .paused, .paused, .stopped, .stopped, .stopped],
+                     "YouTube's player states, ads included, map to what the controls need")
+        let buffering = TVCastPlayer(videoID: "v", position: 0, duration: 0, phase: .buffering, sampledAt: start)
+        suite.expect(buffering.isUnderWay && !buffering.with(phase: .paused, at: start).isUnderWay,
+                     "a loading video offers pause, as one playing does")
+    }
+
+    private static func clockRules(_ suite: TestSuite) {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let playing = TVCastPlayer(videoID: "v", position: 100, duration: 120, phase: .playing, sampledAt: start)
+        suite.expect(playing.position(at: start.addingTimeInterval(5)) == 105
+                     && playing.position(at: start.addingTimeInterval(60)) == 120
+                     && playing.position(at: start.addingTimeInterval(-5)) == 100,
+                     "the clock runs between reports, stops at the end and never runs back")
+        let live = TVCastPlayer(videoID: "v", position: 100, duration: 0, phase: .playing, sampledAt: start)
+        suite.expect(live.position(at: start.addingTimeInterval(5)) == 105, "a stream with no length keeps running")
+        let paused = TVCastPlayer(videoID: "v", position: 100, duration: 120, phase: .paused, sampledAt: start)
+        suite.expect(paused.position(at: start.addingTimeInterval(5)) == 100, "a paused clock stands")
+    }
+
+    private static func lookupRules(_ suite: TestSuite) {
+        let request = TVCastVideoLookup.detailsRequest(videoID: "jfKfPfyJRdk")
+        let items = request?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+        suite.expect(request?.httpMethod == "GET" && items?.host == "www.youtube.com" && items?.path == "/oembed"
+                     && items?.queryItems?.first { $0.name == "url" }?.value == "https://www.youtube.com/watch?v=jfKfPfyJRdk"
+                     && items?.queryItems?.first { $0.name == "format" }?.value == "json"
+                     && request?.value(forHTTPHeaderField: "Cookie") == nil,
+                     "a title comes from YouTube's public oEmbed, asked with the video's id alone")
+        suite.expect(TVCastVideoLookup.thumbnailRequest(videoID: "jfKfPfyJRdk")?.url?.absoluteString
+                     == "https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg",
+                     "the picture is YouTube's 16:9 thumbnail")
+        suite.expect(["", "../../etc/x", "jfKfPfyJRd", "jfKfPfyJRdk?x", "a/b/c/d/e/f"].allSatisfy {
+            TVCastVideoLookup.detailsRequest(videoID: $0) == nil && TVCastVideoLookup.thumbnailRequest(videoID: $0) == nil
+        }, "nothing but an 11-character video id reaches a URL")
+        let reply = Data(#"{"title":" lofi hip hop radio ","author_name":"Lofi Girl","type":"video"}"#.utf8)
+        suite.expect(TVCastVideoLookup.details(status: 200, body: reply)
+                     == TVCastVideoDetails(title: "lofi hip hop radio", channel: "Lofi Girl"),
+                     "the title and channel come out of the reply, trimmed")
+        suite.expect(TVCastVideoLookup.details(status: 200, body: Data(#"{"title":"t"}"#.utf8))
+                     == TVCastVideoDetails(title: "t", channel: ""),
+                     "a reply without a channel still names the video")
+        suite.expect(TVCastVideoLookup.details(status: 401, body: reply) == nil
+                     && TVCastVideoLookup.details(status: 200, body: Data(#"{"title":"  "}"#.utf8)) == nil
+                     && TVCastVideoLookup.details(status: 200, body: Data("Unauthorized".utf8)) == nil,
+                     "a private video, an empty title or no JSON names nothing")
+    }
+
+    private static func displayLinkRules(_ suite: TestSuite) {
+        suite.expect(TVCastSupport.displayLink(for: "https://www.youtube.com/watch?v=jfKfPfyJRdk&si=abc")
+                     == "youtube.com/watch?v=jfKfPfyJRdk"
+                     && TVCastSupport.displayLink(for: " https://youtu.be/jfKfPfyJRdk?t=90 ")
+                     == "youtube.com/watch?v=jfKfPfyJRdk&t=90",
+                     "Play Copied Link shows the watch address it sends, without a scheme or tracking")
+        suite.expect(TVCastSupport.displayLink(for: "https://example.com/watch?v=jfKfPfyJRdk") == nil
+                     && TVCastSupport.displayLink(for: "") == nil,
+                     "anything it would not send it does not show")
     }
 
     private static func failureRules(_ suite: TestSuite) {
@@ -167,6 +348,12 @@ enum TVCastLoungeTests {
                          && text.controlledMessage(.pause, on: "TV") != text.controlledMessage(.stop, on: "TV")
                          && text.controlledMessage(.play, on: "TV") == String(format: text.sentFormat, "TV"),
                          "pause and stop each name the TV once, and play says what a send says (\(language.rawValue))")
+            let link = [text.connectedStatus, text.connectingStatus, text.offlineStatus]
+            suite.expect(Set(link).count == 3 && link.allSatisfy { !$0.isEmpty && !$0.contains("%") }
+                         && text.connectingStatus.hasSuffix("\u{2026}")
+                         && !text.nowPlayingCaption.isEmpty && !text.nothingPlaying.isEmpty
+                         && text.nothingPlaying != text.connectingStatus,
+                         "each state of the link reads differently, and connecting goes on (\(language.rawValue))")
         }
     }
 
@@ -182,21 +369,31 @@ enum TVCastLoungeTests {
     private static func sourceRules(_ suite: TestSuite) {
         let service = source("Sources/Vorssaint/Services/TVCast/TVCastService.swift")
         let control = service.components(separatedBy: "private static func performControl(").dropFirst().first?
-            .components(separatedBy: "private static func run(").first ?? ""
+            .components(separatedBy: "static func loungeScreen(").first ?? ""
         let guardsFirst: Bool = {
-            guard let check = control.range(of: "TVCastSupport.loungeScreen(for: id, inCache: readCache())"),
-                  let send = control.range(of: "TVCastLoungeClient.perform(") else { return false }
+            guard let check = control.range(of: "loungeScreen(for: id)"),
+                  let send = control.range(of: "TVCastLoungeChannel.shared.perform(") else { return false }
             return check.upperBound <= send.lowerBound
         }()
         suite.expect(guardsFirst && control.contains(".failed(.deviceNotFound, during: .control)")
                      && !control.contains("writeCache") && !control.contains("run("),
                      "a control finds the TV paired with a code first, runs no ytcast and writes no list")
-        let client = source("Sources/Vorssaint/Services/TVCast/TVCastLoungeClient.swift")
-        suite.expect(!client.isEmpty && !client.contains("URLRequest(") && !client.contains("URL(")
-                     && !client.contains("PrivateFileStore") && !client.contains("write(")
-                     && client.contains("URLSessionConfiguration.ephemeral")
-                     && client.contains("configuration.httpCookieStorage = nil")
-                     && client.contains("completionHandler(nil)"),
-                     "the client builds no request of its own, writes nothing, and keeps no cookies or redirects")
+        suite.expect(service.contains("TVCastLoungeChannel.shared.stop()"),
+                     "switching the feature off ends the TV's session")
+        let channel = source("Sources/Vorssaint/Services/TVCast/TVCastLoungeChannel.swift")
+        let configured = { (needle: String) in channel.components(separatedBy: needle).count == 3 }
+        suite.expect(!channel.isEmpty && !channel.contains("URLRequest(") && !channel.contains("URL(")
+                     && !channel.contains("PrivateFileStore") && !channel.contains("write(")
+                     && configured("URLSessionConfiguration.ephemeral")
+                     && configured("configuration.httpCookieStorage = nil")
+                     && configured("completionHandler(nil)"),
+                     "the session builds no request of its own, writes nothing, and keeps no cookies or redirects")
+        let lookup = source("Sources/Vorssaint/Services/TVCast/TVCastNowPlayingService.swift")
+        suite.expect(!lookup.isEmpty && !lookup.contains("URLRequest(") && !lookup.contains("URL(")
+                     && !lookup.contains("write(")
+                     && lookup.contains("URLSessionConfiguration.ephemeral")
+                     && lookup.contains("configuration.httpCookieStorage = nil")
+                     && lookup.contains("configuration.urlCache = nil"),
+                     "titles and pictures are asked without cookies, kept in memory and never written")
     }
 }

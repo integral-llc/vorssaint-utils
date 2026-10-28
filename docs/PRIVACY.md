@@ -102,21 +102,32 @@ For each separate Codex home (`CODEX_HOME`) you add in the AI Agents section, it
 
 13. **Covers for Firefox-based browsers, only after you turn on Find covers for Firefox and Zen.** For the YouTube tab whose title is the song's, the video's thumbnail is loaded from `i.ytimg.com`, which receives only the video ID. When no YouTube tab shows the song and a session saved since the lookup began shows an open YouTube Music tab, the song's title and artist and your Mac's region are sent once per lookup to Apple's public catalog search at `itunes.apple.com`, and the album art of a result with the same title and artist is loaded from Apple's image servers at `mzstatic.com`, never from another host the reply might name. Without a readable session that shows YouTube Music, nothing goes to Apple, and a plain YouTube video listed in that session is matched by its own tab instead. These providers receive ordinary request data, including your public IP address, under their own policies. The requests go out through your Mac's own connection, not through a proxy, VPN or secure DNS set only inside the browser. Requests use an ephemeral session without cookies, reject redirects and stop at 4 MB. A lookup gives up about a minute after it starts, and stops at its next try when the song changes, playback stops or the option is turned off. Covers stay in memory for the last eight songs and are never written to disk.
 
-14. **Cast to TV, only when you pair a TV, send a video or press Play, Pause or
-Stop.** Pairing sends the code your TV shows to YouTube's Lounge API at
-`www.youtube.com` over HTTPS, through the bundled `ytcast`, and YouTube answers
-with the TV's name and a pairing token. Sending a video sends YouTube the
-video's ID, taken from its link along with the start time when the link has one,
-and the TV's pairing token; YouTube then tells the TV to play it. The remote is
-shown to YouTube and the TV under the fixed name "ytcast"; no account name or
-computer name is sent, because Vorssaint does not pass either to `ytcast`. Play,
-Pause and Stop send YouTube the command and the TV's pairing token from
-Vorssaint itself, since `ytcast` has no such command, in the same requests
-`ytcast` makes and under the same "ytcast" name; when the token has lapsed, the
-TV's screen ID goes first to get a new one, which is used for that press only
-and not saved. For a TV paired with a code, nothing goes to the TV over your
-local network; everything passes through YouTube. YouTube receives ordinary
-request data, including your public IP address, under its own policies.
+14. **Cast to TV, only when you pair a TV, send a video, press Play, Pause or
+Stop, or open its page in the island.** Pairing sends the code your TV shows to
+YouTube's Lounge API at `www.youtube.com` over HTTPS, through the bundled
+`ytcast`, and YouTube answers with the TV's name and a pairing token. Sending a
+video sends YouTube the video's ID, taken from its link along with the start
+time when the link has one, and the TV's pairing token; YouTube then tells the
+TV to play it. The remote is shown to YouTube and the TV under the fixed name
+"ytcast"; no account name or computer name is sent, because Vorssaint does not
+pass either to `ytcast`. Play, Pause and Stop send YouTube the command and the
+TV's pairing token from Vorssaint itself, since `ytcast` has no such command,
+under the same "ytcast" name; when the token has lapsed, the TV's screen ID goes
+first to get a new one, which is kept in memory and not saved. While the Cast
+to TV page is open in the island, Vorssaint keeps that TV's session with
+YouTube open under the same name, asks what the TV plays and receives the
+video's ID, position and play state as they change; the session stops being
+followed when the page closes. To show the video, its title and channel are
+asked from YouTube's public oEmbed endpoint at `www.youtube.com` and its
+thumbnail is loaded from `i.ytimg.com`, which receive only the video ID. These
+requests use an ephemeral session without cookies, and the titles and
+thumbnails of the last eight videos stay in memory and are never written to
+disk. For a TV paired with a code, nothing goes to the TV over your local
+network; everything passes through YouTube. YouTube receives ordinary request
+data, including your public IP address, under its own policies. When Clipboard
+History is on, Play Copied Link shows the latest copy it already holds if that
+copy is a YouTube link; nothing more is read from the clipboard, and nothing
+is sent, until you press it.
 
 The pairing tokens and TV names are kept in a file in a TVCast folder inside
 Vorssaint's own private data folder on this Mac, which the official and
@@ -126,8 +137,8 @@ own list at `~/.cache/ytcast/ytcast.json` on this Mac and copies the TVs paired
 with a code, pairing tokens included, into its own list: once on its own the
 first time Cast to TV runs, and later only when you press Import. It never
 changes that file, and nothing is sent anywhere by this. Nothing else here
-happens on its own: nothing is sent until you pair a TV or press Send, Play,
-Pause or Stop.
+happens on its own: nothing is sent until you pair a TV, press Send, Play,
+Pause or Stop, or open the Cast to TV page in the island.
 
 That is the entire list. There are no hidden beacons or background uploads.
 

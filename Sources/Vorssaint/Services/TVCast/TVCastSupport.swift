@@ -94,6 +94,12 @@ enum TVCastSupport {
         return watchURL + id
     }
 
+    /// A link as Play Copied Link shows it: the watch address it sends,
+    /// without the scheme or `www.` that every one of them shares.
+    static func displayLink(for input: String) -> String? {
+        videoArgument(from: input).map { $0.replacingOccurrences(of: "https://www.", with: "") }
+    }
+
     /// The digits of a TV code as the TV shows it, spaces and dashes removed;
     /// nil when it is not a plausible code.
     static func pairingCode(from input: String) -> String? {
@@ -318,7 +324,7 @@ enum TVCastSupport {
 
     // MARK: Video parsing
 
-    private static func isVideoID(_ text: String) -> Bool {
+    static func isVideoID(_ text: String) -> Bool {
         text.range(of: "^[A-Za-z0-9_-]{11}$", options: .regularExpression) != nil
     }
 

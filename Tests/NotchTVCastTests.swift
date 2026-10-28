@@ -14,38 +14,34 @@ enum NotchTVCastTests {
         savedListContracts(suite)
         pageContracts(suite)
         heightContracts(suite)
-        playbackContracts(suite)
+        playerContracts(suite)
     }
 
-    /// Play, pause and stop end the top row. Beside the camera its side is at
-    /// its narrowest the page's band side past the clearance; across the top
-    /// the whole row holds them.
-    private static func playbackContracts(_ suite: TestSuite) {
+    /// The player's page fits the smaller preset whole, and its row keeps
+    /// the title readable beside the picture and the transport at the
+    /// narrowest island a person can choose.
+    private static func playerContracts(_ suite: TestSuite) {
+        suite.expect(NotchLayout.tvCastPageHeight <= NotchLayout.compactContentHeight,
+                     "the player, Play Copied Link, the field and two lines of status fit the compact island "
+                        + "without scrolling: \(NotchLayout.tvCastPageHeight)")
         let screen = CGRect(x: 0, y: 0, width: 1710, height: 1112)
-        var sizes: [(NotchSize, Double)] = [(.compact, NotchSize.defaultWidth), (.spacious, NotchSize.defaultWidth)]
-        sizes += stride(from: NotchSize.widthRange.lowerBound, through: NotchSize.widthRange.upperBound, by: 20)
-            .map { (.custom, $0) }
-        var fits = true, wrapped = 0, narrowest = CGFloat.infinity
-        for camera in [CGFloat(0), 156, 170, 180, 185, 190, 200, 208, 210, 224] {
-            for (size, width) in sizes {
-                for sectionsButton in [false, true] {
-                    let page = NotchGeometry(screen: screen, safeAreaTop: camera > 0 ? 32 : 0, cameraWidth: camera,
-                                             layout: size, customWidth: width, silhouette: camera > 0 ? .notch : .capsule)
-                        .page(.tvCast, controls: [], sectionsButton: sectionsButton)
-                    let band = NotchBand(geometry: page, contentWidth: page.contentWidth)
-                    if band.besideCamera {
-                        wrapped += 1
-                        narrowest = min(narrowest, band.side)
-                    }
-                    fits = fits && NotchLayout.tvCastPlaybackWidth <= band.side
-                }
+        var narrowest = CGFloat.infinity
+        for camera in [CGFloat(0), 185, 224] {
+            for width in [NotchSize.widthRange.lowerBound, NotchSize.defaultWidth] {
+                let page = NotchGeometry(screen: screen, safeAreaTop: camera > 0 ? 32 : 0, cameraWidth: camera,
+                                         layout: .custom, customWidth: width, silhouette: camera > 0 ? .notch : .capsule)
+                    .page(.tvCast, controls: [], sectionsButton: true)
+                narrowest = min(narrowest, page.contentWidth)
             }
         }
-        suite.expect(NotchLayout.tvCastPlaybackWidth == 92,
-                     "three 28-point buttons, 4 apart: \(NotchLayout.tvCastPlaybackWidth)")
-        suite.expect(fits && wrapped > 0,
-                     "play, pause and stop fit the top row beside every camera at every island width, "
-                        + "down to \(Int(narrowest)) points")
+        // The page insets its column by 4 on each side.
+        suite.expect(NotchLayout.tvCastNowPlayingMinimumWidth <= narrowest - 8,
+                     "the player's row fits the narrowest island: \(NotchLayout.tvCastNowPlayingMinimumWidth) "
+                        + "in \(narrowest - 8)")
+        suite.expect(NotchLayout.tvCastThumbnailWidth / NotchLayout.tvCastThumbnailHeight == 16 / 9
+                     && NotchLayout.tvCastThumbnailHeight <= NotchLayout.tvCastNowPlayingHeight
+                     && NotchLayout.tvCastToggleSize <= NotchLayout.tvCastNowPlayingHeight,
+                     "the picture keeps YouTube's 16:9 and the row holds it and the toggle")
     }
 
     /// A short page keeps a short island at every chosen size: a custom size
@@ -193,8 +189,11 @@ enum NotchTVCastTests {
                      && (press?.upperBound ?? page.endIndex) < (reading?.lowerBound ?? page.startIndex),
                      "the page reads the pasteboard only when Play Copied Link is pressed, never unasked")
         suite.expect(page.contains("TVCastService.shared") && !page.contains("TVCastService(")
-                     && page.contains(".onAppear { service.reload() }"),
-                     "the page shares the feature's one service and refreshes its TVs as it appears")
+                     && page.contains(".onAppear {\n            service.reload()\n            live.watch(followedID)"),
+                     "the page shares the feature's one service, refreshes its TVs as it appears and follows the TV")
+        suite.expect(page.contains(".onDisappear { live.watch(nil) }")
+                     && page.contains("preview || !service.isHelperInstalled ? nil : selectedID"),
+                     "the TV is followed only while the page shows, and never from a preview in Settings")
     }
 
     private static func source(_ path: String) -> String {

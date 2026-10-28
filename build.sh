@@ -606,6 +606,8 @@ if (( TEST )); then
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
         Sources/Vorssaint/Services/TVCast/TVCastSupport.swift
         Sources/Vorssaint/Services/TVCast/TVCastLounge.swift
+        Sources/Vorssaint/Services/TVCast/TVCastLoungeEvents.swift
+        Sources/Vorssaint/Services/TVCast/TVCastNowPlaying.swift
         Sources/Vorssaint/Services/Notch/NotchTVCastLayout.swift
         Sources/Vorssaint/Core/TVCastStrings.swift
         Sources/Vorssaint/Core/TVCastStrings+Languages.swift

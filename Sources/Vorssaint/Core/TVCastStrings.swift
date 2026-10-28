@@ -20,6 +20,11 @@ struct TVCastStrings {
     let stopButton: String
     let pausedFormat: String
     let stoppedFormat: String
+    let nowPlayingCaption: String
+    let nothingPlaying: String
+    let connectedStatus: String
+    let connectingStatus: String
+    let offlineStatus: String
     let invalidVideo: String
     let noCopiedLink: String
     let keepYouTubeOpenHint: String

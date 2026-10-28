@@ -153,7 +153,7 @@ Reorder or hide panel sections, choose a compact layout, and export settings to 
 - **Color picker.** Copy a screen color as HEX, RGB, HSL or SwiftUI code.
 - **Media tools.** Compress and edit videos, batch-convert images, add watermarks, make GIFs and extract text, all locally.
 - **Transcriber.** Turn a video link or a local audio or video file into a text transcript. Decoding runs on your Mac, or on a whisper.cpp server of your own. Needs helper binaries the build stages into the app; see [contributing](CONTRIBUTING.md).
-- **Cast to TV.** Send a YouTube link to an Apple TV or any other TV running YouTube, paired once with the TV code the YouTube app shows, then play, pause or stop it from the island or Settings. Sends through ytcast, which the build stages into the app; see [contributing](CONTRIBUTING.md).
+- **Cast to TV.** Send a YouTube link to an Apple TV or any other TV running YouTube, paired once with the TV code the YouTube app shows, then play, pause or stop it from the island or Settings. The island shows what the TV plays, with its title, thumbnail and progress. Sends through ytcast, which the build stages into the app; see [contributing](CONTRIBUTING.md).
 
 ### App management
 

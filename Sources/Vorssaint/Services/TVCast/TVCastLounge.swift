@@ -91,29 +91,51 @@ enum TVCastLounge {
     /// which one renewal can fix.
     static func tokenRejected(status: Int) -> Bool { status == 401 }
 
-    /// ytcast's `extractSessionIds`: a length, then arrays of `[index,
-    /// [key, value, ...]]`, where `c` carries the SID and `S` the gsessionid.
+    /// ytcast's `extractSessionIds`: the `c` event carries the SID and the
+    /// `S` event the gsessionid.
     static func session(status: Int, body: Data) -> TVCastLoungeSession? {
-        guard status == 200, let start = body.firstIndex(of: UInt8(ascii: "[")),
-              let events = try? JSONSerialization.jsonObject(with: body[start...]) as? [[Any]] else { return nil }
+        guard status == 200 else { return nil }
+        return session(in: messages(inReply: body))
+    }
+
+    static func session(in messages: [TVCastLoungeMessage]) -> TVCastLoungeSession? {
         var sid: String?, gsessionID: String?
-        for event in events {
-            guard event.count >= 2, let payload = event[1] as? [Any], payload.count >= 2,
-                  let key = payload[0] as? String, let value = payload[1] as? String else { continue }
-            if key == "c" { sid = value }
-            if key == "S" { gsessionID = value }
+        for message in messages {
+            switch message.event {
+            case .sessionID(let value): sid = value
+            case .gsessionID(let value): gsessionID = value
+            default: break
+            }
         }
         guard let sid, let gsessionID, !sid.isEmpty, !gsessionID.isEmpty else { return nil }
         return TVCastLoungeSession(sid: sid, gsessionID: gsessionID)
     }
 
-    /// The command in the shape of ytcast's Play: one request, numbered after the bind.
-    static func commandRequest(_ playback: TVCastPlayback, token: String,
-                               session: TVCastLoungeSession) -> URLRequest {
+    /// YouTube's word that the session ended, which a new bind fixes.
+    static func sessionLost(status: Int) -> Bool { [400, 404, 410].contains(status) }
+
+    /// Asks the TV to say what it plays; the answer comes as an event.
+    static let nowPlayingCommand = "getNowPlaying"
+
+    /// The session's `number`th command, from 1, in the shape of ytcast's
+    /// Play. ytcast sends one command per session; a session that sends more
+    /// numbers each one as pyytlounge does, so YouTube takes them all.
+    static func commandRequest(_ command: String, token: String, session: TVCastLoungeSession,
+                               number: Int) -> URLRequest {
         request(bindURL, query: [
-            ("CVER", "1"), ("RID", "2"), ("SID", session.sid), ("VER", "8"),
+            ("CVER", "1"), ("RID", String(number + 1)), ("SID", session.sid), ("VER", "8"),
             ("gsessionid", session.gsessionID), ("loungeIdToken", token),
-        ], body: [("count", "1"), ("req0__sc", playback.command)])
+        ], body: [("count", "1"), ("ofs", String(number)), ("req0__sc", command)])
+    }
+
+    /// The session's events from `lastEventID` on, streamed until YouTube
+    /// ends the request, as pyytlounge subscribes.
+    static func subscribeRequest(token: String, session: TVCastLoungeSession, lastEventID: Int) -> URLRequest {
+        request(bindURL, method: "GET", query: [
+            ("name", remoteName), ("loungeIdToken", token), ("SID", session.sid), ("AID", String(lastEventID)),
+            ("gsessionid", session.gsessionID), ("device", "REMOTE_CONTROL"), ("app", "youtube-desktop"),
+            ("VER", "8"), ("v", "2"), ("RID", "rpc"), ("CI", "0"), ("TYPE", "xmlhttp"),
+        ], body: [])
     }
 
     /// A request that never reached an answer. Only a timeout says something
@@ -130,13 +152,13 @@ enum TVCastLounge {
         value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
     }
 
-    private static func request(_ address: String, query: [(String, String)],
+    private static func request(_ address: String, method: String = "POST", query: [(String, String)],
                                 body: [(String, String)]) -> URLRequest {
         var components = URLComponents(string: address)
         if !query.isEmpty { components?.percentEncodedQuery = formEncoded(query) }
         // Both addresses are constants, so the fallback is never taken.
         var request = URLRequest(url: components?.url ?? URL(fileURLWithPath: "/"))
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue(origin, forHTTPHeaderField: "Origin")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         if !body.isEmpty {

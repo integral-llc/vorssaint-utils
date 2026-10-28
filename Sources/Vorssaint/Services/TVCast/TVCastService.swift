@@ -131,6 +131,7 @@ final class TVCastService: ObservableObject {
             reload()
         } else {
             lock.withLock { running }?.cancel()
+            TVCastLoungeChannel.shared.stop()
         }
     }
 
@@ -177,7 +178,7 @@ final class TVCastService: ObservableObject {
     }
 
     /// Play, pause or stop what YouTube plays on the TV. No ytcast runs:
-    /// it has no such command, so the service asks YouTube itself.
+    /// it has no such command, so the TV's session carries it.
     func control(_ playback: TVCastPlayback, on id: String) {
         guard activity == .idle, AppFeature.tvCast.isAvailable else { return }
         let name = devices.first { $0.id == id }?.name ?? id
@@ -333,10 +334,10 @@ final class TVCastService: ObservableObject {
     /// The list is read and never written.
     private static func performControl(_ playback: TVCastPlayback, on id: String, name: String,
                                        cancellation: BoundedProcessCancellation) -> TVCastOutcome {
-        guard let screen = TVCastSupport.loungeScreen(for: id, inCache: readCache()) else {
+        guard let screen = loungeScreen(for: id) else {
             return .failed(.deviceNotFound, during: .control)
         }
-        switch TVCastLoungeClient.perform(playback, on: screen, cancellation: cancellation) {
+        switch TVCastLoungeChannel.shared.perform(playback, on: screen, cancellation: cancellation) {
         case .success:
             return .controlled(playback, name)
         case .failure(let failure):
@@ -345,6 +346,12 @@ final class TVCastService: ObservableObject {
             }
             return .failed(failure, during: .control)
         }
+    }
+
+    /// What the TV's session needs, for a TV paired with a code. The list is
+    /// only read, from any queue: every write replaces the file whole.
+    static func loungeScreen(for id: String) -> TVCastLoungeScreen? {
+        TVCastSupport.loungeScreen(for: id, inCache: readCache())
     }
 
     /// ytcast's output when it succeeded. `snapshot` is the cache as it was
