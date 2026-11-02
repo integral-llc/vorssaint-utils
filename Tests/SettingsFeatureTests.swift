@@ -28,10 +28,10 @@ enum SettingsFeatureTests {
                 .flatMap(\.items).first { $0.page == .mouse }!
             let zoomKeywords = zip(mouse.keywords, mouse.keywordFeatures)
                 .filter { $0.1 == .scrollZoom }.map(\.0)
-            suite.expect(zoomKeywords == [strings.zoomSection, strings.verticalZoom,
+            suite.expect(zoomKeywords == [strings.zoomSection,
                                            strings.pinchZoom],
                          "settings discovery includes every Zoom row in \(language.rawValue)")
-            for query in [strings.verticalZoom, strings.pinchZoom] {
+            for query in [strings.zoomSection, strings.pinchZoom] {
                 suite.expect(SettingsSearchSupport.matches(query: query, title: mouse.title, keywords: mouse.keywords),
                              "search finds a localized Zoom option on the Mouse page")
             }
@@ -357,6 +357,16 @@ enum SettingsFeatureTests {
                "the apps each mouse feature leaves alone travel with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.clipboardHistoryIgnoredApps),
                "the apps the clipboard history skips travel with the settings backup")
+        suite.expect(backupKeys.contains(DefaultsKey.clipboardHistoryShowSourceAppIcons),
+               "the clipboard list source app icons preference travels with the settings backup")
+        for value in [false, true] {
+            let backup = SettingsBackupSupport.payload(appVersion: "test") { key in
+                key == DefaultsKey.clipboardHistoryShowSourceAppIcons ? value : nil
+            }
+            suite.expect(SettingsBackupSupport.sanitizedSettings(from: backup)?[
+                DefaultsKey.clipboardHistoryShowSourceAppIcons] as? Bool == value,
+                "the list source app icons choice survives a settings backup round trip: \(value)")
+        }
         suite.expect(backupKeys.contains(DefaultsKey.clipboardHistoryLayout),
                "the clipboard history layout travels with the settings backup")
         suite.expect(!backupKeys.contains(DefaultsKey.clipboardHistoryWindowWidth)
