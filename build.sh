@@ -695,7 +695,7 @@ if (( TEST )); then
         ./Tests/DeployVersionTests.sh || test_status=1
         ./Tests/UninstallSpacesTests.sh || test_status=1
         ./Tests/DeveloperInstallIsolationTests.sh || test_status=1
-        PYTHONDONTWRITEBYTECODE=1 python3 -I Tests/LayoutSubtitleWordsTests.py || test_status=1
+        python3 -I -B Tests/LayoutSubtitleWordsTests.py || test_status=1
     fi
     discard_test_preferences || test_status=1
     exit $test_status
