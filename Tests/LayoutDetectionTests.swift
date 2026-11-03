@@ -114,8 +114,16 @@ enum LayoutDetectionTests {
             suite.expect(result?.decision == .switchLayout && result?.confidence == .high,
                          "\(typed) is recognised as the other layout's word")
         }
-        // Punctuation that the other layout reads as a letter counts against
-        // the typed spelling, but only when the result is a plausible word.
+        // Three letters that are a word on both layouts: the lists decide, so
+        // an abbreviation stays put and a slip into a common word does not.
+        for word in ["fps", "gtx", "idf", "cbn", "afp"] {
+            suite.expect(verdict(word, typedLanguage: "en")?.decision == .undecided,
+                         "\(word) is listed on both layouts and left alone")
+        }
+        for (typed, expected) in [("ult", "где"), ("nen", "тут"), ("tot", "еще")] {
+            suite.expect(rewritten(typed, typedLanguage: "en") == expected,
+                         "\(typed) is the far commoner \(expected)")
+        }
         // Long words no list carries: settled on their characters in total.
         for (typed, language) in [("rkzepybxfdibq", "en"), ("evelhbdibq", "en"), ("dnbcyedibqcz", "en"),
                                   ("вфскнщсныешешы", "ru")] {
@@ -126,6 +134,8 @@ enum LayoutDetectionTests {
             suite.expect(verdict(word, typedLanguage: "en")?.decision != .switchLayout,
                          "\(word) is not Russian however long it is")
         }
+        // Punctuation that the other layout reads as a letter counts against
+        // the typed spelling, but only when the result is a plausible word.
         for code in ["[str", "{Ver", "{Vers", "{Name", "{Header", "Node{Name", "err;", "a;b"] {
             suite.expect(verdict(code, typedLanguage: "en")?.decision != .switchLayout,
                          "\(code) is code, and a lone bracket does not make it Russian")
@@ -269,6 +279,18 @@ enum LayoutDetectionTests {
         suite.expect(tied(0) == .undecided, "a tie with no sentence around it is left alone")
         suite.expect(tied(-2) == .switchLayout, "a Russian sentence tips a tie toward Russian")
         suite.expect(tied(2) == .keep, "an English sentence tips the same tie toward English")
+
+        // The same pair with the letters far apart: three listed letters are
+        // still a tie, whatever the character models make of them.
+        let lopsided = LayoutDecisionScorer(evidence: StubEvidence(
+            frequencies: ["en": ["abc": 3], "ru": ["фис": 3]],
+            likelihoods: ["abc": -5, "фис": -2]))
+        func lopsidedTie(_ lean: Double) -> LayoutDecisionScorer.Decision {
+            lopsided.verdict(typed: "abc", typedLanguage: "en", mapped: "фис", mappedLanguage: "ru",
+                             contextLean: lean).decision
+        }
+        suite.expect(lopsidedTie(0) == .undecided, "a short word listed on both layouts is left to the lists")
+        suite.expect(lopsidedTie(-2) == .switchLayout, "and a Russian sentence still tips it")
         evidenceChecks(suite)
 
         let confident = LayoutDecisionScorer(evidence: StubEvidence(
@@ -475,7 +497,7 @@ enum LayoutDetectionTests {
         suite.expect(falsePositiveRate < 0.005, "fewer than 0.5% of real words are switched (\(falsePositiveRate))")
         suite.expect(recall > 0.97, "more than 97% of wrong-layout words are caught (\(recall))")
         suite.expect(precision > 0.99, "more than 99% of switches are right (\(precision))")
-        suite.expect(heldRate >= 0.5, "words valid on both layouts are mostly left alone (\(heldRate))")
+        suite.expect(heldRate >= 0.95, "words valid on both layouts are left alone (\(heldRate))")
         suite.expect(confidentFalsePositives.isEmpty,
                      "no real word is switched with confidence: \(confidentFalsePositives)")
     }

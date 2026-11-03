@@ -61,6 +61,11 @@ struct LayoutDecisionScorer {
         /// full stop, and the lists alone cannot tell the abbreviation from
         /// the pronoun.
         var shortWord = 3
+        /// Up to this many letters, two listed spellings are weighed on the
+        /// lists alone. `fps` and `азы` are both words; what the character
+        /// models make of three letters says more about abbreviations than
+        /// about layouts.
+        var listedShortWord = 3
         var highConfidence = 4.0
         /// Below this length every missing character raises the bar for high
         /// confidence, because a single list entry tips a short word.
@@ -129,6 +134,11 @@ struct LayoutDecisionScorer {
                                       listed: typedFrequency != nil || mappedFrequency != nil
                                           || personalBonus(typedLower) > 0)
         var margin = typedScore - mappedScore
+        if typedFrequency != nil, mappedFrequency != nil, isShortPlainPair(typed, mapped) {
+            margin -= weights.characterModel
+                * (evidence.logLikelihood(of: typedLower, language: typedLanguage)
+                    - evidence.logLikelihood(of: mappedLower, language: mappedLanguage))
+        }
         if abs(margin) < decisive {
             if abs(contextLean) >= thresholds.contextActive {
                 margin += thresholds.contextWeight * contextLean
@@ -167,6 +177,11 @@ struct LayoutDecisionScorer {
         guard typed.allSatisfy(\.isLetter), mapped.allSatisfy(\.isLetter) else { return false }
         return evidence.slipFrequency(of: typed, language: typedLanguage) != nil
             && evidence.slipFrequency(of: mapped, language: mappedLanguage) == nil
+    }
+
+    private func isShortPlainPair(_ typed: String, _ mapped: String) -> Bool {
+        min(typed.count, mapped.count) <= thresholds.listedShortWord
+            && typed.allSatisfy(\.isLetter) && mapped.allSatisfy(\.isLetter)
     }
 
     /// The character models score per character, so one margin asks a long

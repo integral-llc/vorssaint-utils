@@ -38,7 +38,7 @@ enum LayoutIndependentCorpusTests {
 
     /// Set just under what the shipped data measured on 2026-11-03, so noise
     /// passes and a real regression does not: unknown words 98.9% (ru) and
-    /// 99.4% (en) with no false correction, code 0.047%, the rest 0.
+    /// 99.4% (en) with no false correction, code 0.040%, the rest 0.
     private static let gates: [String: Gate] = [
         "unknown-ru": Gate(recall: 0.985, falseCorrections: 0.001),
         "unknown-en": Gate(recall: 0.99, falseCorrections: 0.001),
