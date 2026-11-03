@@ -4,16 +4,25 @@ One pair of files per language the automatic mode can judge:
 
 - `<language>_words.txt`: `word<TAB>zipf`, one entry per line. Zipf runs from
   about 1 (rare) to about 7.5 (the commonest words).
-- `<language>_charmodel.dat`: raw character n-gram counts, order 4, with `^`
-  and `$` standing for the start and end of a word. The header line carries
-  `order` and `total_unigrams`.
+- `<language>_charmodel.dat`: weighted character n-gram counts, order 3,
+  with `^` and `$` standing for the start and end of a word. The header line
+  carries `order` and the Kneser-Ney `discount` the counts are read with.
 
 A language is judged only when both of its files are present. Both layouts of
 a pair need one, otherwise automatic mode leaves that pair to the shortcut.
 
-Derived from [wordfreq](https://github.com/rspeer/wordfreq) 3.1.1 (top 50,000
-English and 100,000 Russian entries, letters only). The wordfreq data is
-licensed CC BY-SA 4.0, and these files are distributed under the same terms.
+The word lists derive from [wordfreq](https://github.com/rspeer/wordfreq)
+3.1.1 (top 50,000 English and 100,000 Russian entries, letters only). The
+wordfreq data is licensed CC BY-SA 4.0, and these files are distributed under
+the same terms.
+
+The character models are built by `Tools/build-layout-charmodel.py` from the
+FrequencyWords 50k lists named below: every n-gram of every entry, counted
+ln(1 + occurrences) times, so the models describe the text people type rather
+than a dictionary. Same source commit, checksums and license as the subtitle
+lists. Order 3 with interpolated Kneser-Ney smoothing beat orders 4 and 5,
+additive smoothing and unweighted counts on words no list carries, which is
+the only place the models decide anything.
 
 `<language>_subtitle_words.txt` is optional and only adds words: chat words
 the written-text list misses (`перезвони`, `облажался`). Same format, read

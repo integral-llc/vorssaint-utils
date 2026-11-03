@@ -30,11 +30,24 @@ enum LayoutDetectionTests {
         func logLikelihood(of word: String, language: String) -> Double { likelihoods[word] ?? -12 }
     }
 
+    /// Fixed answers plus a fixed set of one-slip neighbours.
+    private struct SlipEvidence: LayoutLanguageEvidence {
+        let likelihoods: [String: Double]
+        let slips: [String: Double]
+
+        func supports(_ language: String) -> Bool { true }
+        func frequency(of word: String, language: String) -> Double? { nil }
+        func logLikelihood(of word: String, language: String) -> Double { likelihoods[word] ?? -12 }
+        func slipFrequency(of word: String, language: String) -> Double? { slips[word] }
+    }
+
     static func run(_ suite: TestSuite) {
         gateChecks(suite)
         bufferChecks(suite)
         contextChecks(suite)
         vocabularyChecks(suite)
+        modelChecks(suite)
+        slipChecks(suite)
 
         let table = LayoutSwitcherSupport.table(from: glyphs(latin), to: glyphs(cyrillic))
         suite.expect(table.mapForward("Ghbdtn") == "Привет" && table.mapReverse("Привет") == "Ghbdtn",
@@ -103,16 +116,29 @@ enum LayoutDetectionTests {
         }
         // Punctuation that the other layout reads as a letter counts against
         // the typed spelling, but only when the result is a plausible word.
+        // Long words no list carries: settled on their characters in total.
+        for (typed, language) in [("rkzepybxfdibq", "en"), ("evelhbdibq", "en"), ("dnbcyedibqcz", "en"),
+                                  ("вфскнщсныешешы", "ru")] {
+            suite.expect(verdict(typed, typedLanguage: language)?.decision == .switchLayout,
+                         "\(typed) is a long word typed on the other layout")
+        }
+        for word in ["zugreifen", "erfasst", "aktiviert", "Dytiscidae", "unremittingly"] {
+            suite.expect(verdict(word, typedLanguage: "en")?.decision != .switchLayout,
+                         "\(word) is not Russian however long it is")
+        }
         for code in ["[str", "{Ver", "{Vers", "{Name", "{Header", "Node{Name", "err;", "a;b"] {
             suite.expect(verdict(code, typedLanguage: "en")?.decision != .switchLayout,
                          "\(code) is code, and a lone bracket does not make it Russian")
         }
-        for typed in ["[dfnbn", "{jhjij", "c]tk", "ye;yj", "gj[j;t", "gjl]t[fk", "j,]`v", ";tyz",
-                      "{heo`d", "[vsrfnm"] {
+        for typed in ["[dfnbn", "{jhjij", "c]tk", "ye;yj", "gj[j;t", "gjl]t[fk", "j,]`v", ";tyz", "[vsrfnm"] {
             let result = verdict(typed, typedLanguage: "en")
             suite.expect(result?.decision == .switchLayout && result?.confidence == .high,
                          "\(typed) is Russian typed through the punctuation keys")
         }
+        // Subtitles seldom write ё, so `Хрущёв` reads too unlikely for the
+        // brackets to count against the typed spelling; it still switches.
+        suite.expect(verdict("{heo`d", typedLanguage: "en")?.decision == .switchLayout,
+                     "a name with ё typed through the punctuation keys is still recognised")
 
         corpusChecks(suite) { word, language in
             // The same road a finished word takes in the app, filter included,
@@ -243,6 +269,7 @@ enum LayoutDetectionTests {
         suite.expect(tied(0) == .undecided, "a tie with no sentence around it is left alone")
         suite.expect(tied(-2) == .switchLayout, "a Russian sentence tips a tie toward Russian")
         suite.expect(tied(2) == .keep, "an English sentence tips the same tie toward English")
+        evidenceChecks(suite)
 
         let confident = LayoutDecisionScorer(evidence: StubEvidence(
             frequencies: ["en": ["hello": 6]], likelihoods: ["hello": -1.5]))
@@ -250,6 +277,90 @@ enum LayoutDetectionTests {
                                      mappedLanguage: "ru", contextLean: -2)
         suite.expect(held.decision == .keep && held.confidence == .high,
                      "no sentence overrides a word that is clearly right")
+    }
+
+    /// A word neither list carries, 1.3 ahead per character: a near tie at six
+    /// letters, settled at thirteen, where that is 18 in total.
+    private static func evidenceChecks(_ suite: TestSuite) {
+        let long = ("rkzepybxfdibq", "кляузничавший"), short = ("pftlbv", "заедим")
+        func scorer(listing listed: [String: [String: Double]] = [:]) -> LayoutDecisionScorer {
+            LayoutDecisionScorer(evidence: StubEvidence(frequencies: listed, likelihoods: [
+                long.0: -4.3, long.1: -3.0, short.0: -4.3, short.1: -3.0,
+                "lt,fhrfltht": -4.3, "дебаркадере": -3.0,
+            ]))
+        }
+        func verdict(_ pair: (String, String), _ scorer: LayoutDecisionScorer,
+                     lean: Double = 0) -> LayoutDecisionScorer.Verdict {
+            scorer.verdict(typed: pair.0, typedLanguage: "en", mapped: pair.1, mappedLanguage: "ru",
+                           contextLean: lean)
+        }
+        let unlisted = scorer()
+        let settled = verdict(long, unlisted)
+        suite.expect(settled.decision == .switchLayout && settled.confidence == .low,
+                     "a long unlisted word far ahead in total switches, and still waits for a second")
+        suite.expect(verdict(long, unlisted, lean: 2).decision == .switchLayout,
+                     "a word settled on its own characters is not reopened by the sentence")
+        suite.expect(verdict(short, unlisted).decision == .undecided,
+                     "the same lead per character on a short word is still a near tie")
+        suite.expect(unlisted.verdict(typed: long.1, typedLanguage: "ru", mapped: long.0,
+                                      mappedLanguage: "en").decision == .keep,
+                     "the evidence settles a word toward the layout it was typed on too")
+        suite.expect(verdict(long, scorer(listing: ["en": [long.0: 1], "ru": [long.1: 1]])).decision == .undecided,
+                     "listed spellings are judged at the usual bar")
+        suite.expect(verdict(("lt,fhrfltht", "дебаркадере"), unlisted).decision == .undecided,
+                     "a punctuation key in the word keeps the usual bar")
+    }
+
+    /// The character model file: two words, `ab` three times and `ba` once,
+    /// counted the way `Tools/build-layout-charmodel.py` counts them.
+    private static func modelChecks(_ suite: TestSuite) {
+        let counts = ["a\t4", "b\t4", "$\t4", "^a\t3", "^^a\t3", "ab\t3", "^ab\t3", "b$\t3", "ab$\t3",
+                      "^b\t1", "^^b\t1", "ba\t1", "^ba\t1", "a$\t1", "ba$\t1"]
+        let header = "# charmodel v3 lang=xx order=3 discount=0.75 weight=log1p\n"
+        guard let model = CharacterNGramModel(contents: header + counts.joined(separator: "\n") + "\n") else {
+            suite.expect(false, "a v3 character model loads")
+            return
+        }
+        suite.expect(model.letters == ["a", "b"], "the alphabet is read off the unigrams, sentinels left out")
+        suite.expect(model.logLikelihood("ab") > model.logLikelihood("ba")
+                        && model.logLikelihood("ba") > model.logLikelihood("bb")
+                        && model.logLikelihood("bb") > model.logLikelihood("bz"),
+                     "the commoner word reads best, the unseen one worse, the unseen letter worst")
+        suite.expect(model.logLikelihood("AB") == model.logLikelihood("ab"), "case does not count")
+        suite.expect(CharacterNGramModel(contents: "# charmodel v2 lang=xx order=4 total_unigrams=8\n"
+                                         + counts.joined(separator: "\n") + "\n") == nil,
+                     "a model without a discount is refused rather than scored at a bar it was never measured against")
+        suite.expect(CharacterNGramModel(contents: header) == nil, "a model with no counts is refused")
+
+        let evidence = BundledLanguageEvidence(directory: URL(fileURLWithPath: "Resources/LayoutSwitcher"))
+        suite.expect(evidence.slipFrequency(of: "приветт", language: "ru") == evidence.frequency(of: "привет", language: "ru")
+                        && evidence.slipFrequency(of: "пивет", language: "ru") != nil
+                        && evidence.slipFrequency(of: "прявет", language: "ru") != nil
+                        && evidence.slipFrequency(of: "рпивет", language: "ru") != nil,
+                     "a doubled, dropped, replaced or swapped letter is one slip from the word")
+        suite.expect(evidence.slipFrequency(of: "uhraf", language: "en") == nil
+                        && evidence.slipFrequency(of: "wjrfdibq", language: "en") == nil,
+                     "nonsense is one slip from nothing")
+        suite.expect(evidence.slipFrequency(of: "привет", language: "xx") == nil,
+                     "a language with no data has no neighbours")
+    }
+
+    /// One slip from a word of its own layout, and not from one of the other.
+    private static func slipChecks(_ suite: TestSuite) {
+        func verdict(slips: [String: Double]) -> LayoutDecisionScorer.Verdict {
+            let scorer = LayoutDecisionScorer(evidence: SlipEvidence(
+                likelihoods: ["fnty": -5, "атен": -2], slips: slips))
+            return scorer.verdict(typed: "fnty", typedLanguage: "en", mapped: "атен", mappedLanguage: "ru")
+        }
+        suite.expect(verdict(slips: [:]).decision == .switchLayout,
+                     "three per character ahead, an unlisted four-letter word switches on its characters")
+        let typo = verdict(slips: ["fnty": 4])
+        suite.expect(typo.decision == .keep && typo.confidence == .low,
+                     "a typo of an English word is kept, and not confidently enough to count as typed right")
+        suite.expect(verdict(slips: ["fnty": 4, "атен": 2]).decision == .switchLayout,
+                     "with a neighbour on both sides the characters decide")
+        suite.expect(verdict(slips: ["атен": 2]).decision == .switchLayout,
+                     "a neighbour on the other side only is no reason to keep")
     }
 
     private static func vocabularyChecks(_ suite: TestSuite) {

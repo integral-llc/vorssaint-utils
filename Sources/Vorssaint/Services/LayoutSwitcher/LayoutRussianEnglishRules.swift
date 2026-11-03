@@ -28,12 +28,38 @@ extension LayoutDecisionScorer {
         return .rewrite(word: typed, replacement: mapped, verdict: verdict)
     }
 
+    /// A token typed on the Latin layout that opens a quotation and does not
+    /// close it: `'hello`, `'em`, `'ktrnhjkbp\`h`. In English the apostrophe
+    /// is never part of the word; it opens a quote or marks an elision, and
+    /// the word starts after it. On the Russian layout the same key is э,
+    /// which opens thousands of words. Scored with the quote on, the English
+    /// reading is charged for a character no word model has seen and the
+    /// Russian one wins by that alone, so `'at` would become `эфе`. Scored
+    /// without it, `at` keeps and `электролизёр` still wins on its merits.
+    ///
+    /// The sentence so far is not consulted for such a token either. An
+    /// opening quote is exactly where a Russian sentence switches to an
+    /// English term, so the momentum of the words before it says nothing
+    /// about this one. A token that closes the quote too, `'VUWL'`, is a
+    /// literal and stays machine text.
+    ///
+    /// A correction taken back is refused under the spelling with the quote,
+    /// so that spelling is the one looked up; stripped, it would never match.
+    func opensQuotation(_ core: String, in token: String,
+                        typedLanguage: String, mappedLanguage: String) -> Bool {
+        typedLanguage == "en" && mappedLanguage == "ru"
+            && core.first == "'" && core.count > 1 && !token.dropFirst().contains("'")
+            && vocabulary?.isRefused(core) != true
+    }
+
     /// Punctuation the way code and file names use it, on the English reading
     /// of a token. `б`, `ю` and `э` sit on the comma, full stop and apostrophe
     /// keys, and refusing every unknown word that needs one of them refused a
     /// quarter of Russian. What is left to refuse is what Russian never looks
     /// like: quotes and angle brackets (`"npm"`, `<div>`), a leading dot or
-    /// apostrophe (`.absent`, `'a'`), and digits (`v1.2`).
+    /// apostrophe (`.absent`, `'a'`), and digits (`v1.2`). An apostrophe that
+    /// only opens a quotation never reaches this: `opensQuotation` has it
+    /// read as the letter it may be.
     static func readsAsMachineText<Text: Collection>(_ english: Text) -> Bool where Text.Element == Character {
         if english.first == "." || english.first == "'" { return true }
         return english.contains { $0 == "\"" || $0 == "<" || $0 == ">" || $0.isNumber }

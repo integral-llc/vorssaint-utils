@@ -33,6 +33,7 @@ extension LayoutDecisionScorer {
                                  mapped: mapped, mappedLanguage: mappedLanguage) {
             return url
         }
+        if Self.isQuotedLiteral(typed) { return .undecided }
 
         // Punctuation under both readings: `!`, a bracket, or `^` that the
         // other layout types as a comma. Not part of any word on either side
@@ -46,6 +47,7 @@ extension LayoutDecisionScorer {
         while coreEnd > start, Self.isWordy(pairs[coreEnd - 1].0) != Self.isWordy(pairs[coreEnd - 1].1) {
             coreEnd -= 1
         }
+        if Self.isAbbreviation(pairs[start..<coreEnd].map(\.0)) { return .undecided }
         let pureHead = String(pairs[..<start].map(\.1))
         let pureTail = String(pairs[end...].map(\.1))
 
@@ -53,9 +55,14 @@ extension LayoutDecisionScorer {
             guard limit > start else { return nil }
             let core = pairs[start..<limit]
             let typedCore = String(core.map(\.0)), mappedCore = String(core.map(\.1))
-            let result = self.verdict(typed: typedCore, typedLanguage: typedLanguage,
+            // An opening quote is not part of the English word it precedes,
+            // and the sentence before it has no say over what it quotes.
+            let quoted = opensQuotation(typedCore, in: typed,
+                                        typedLanguage: typedLanguage, mappedLanguage: mappedLanguage)
+            let englishCore = quoted ? String(typedCore.dropFirst()) : typedCore
+            let result = self.verdict(typed: englishCore, typedLanguage: typedLanguage,
                                       mapped: mappedCore, mappedLanguage: mappedLanguage,
-                                      contextLean: contextLean)
+                                      contextLean: quoted ? 0 : contextLean)
             // `file.txt` has a Cyrillic spelling and so does `example.com`.
             // Where ordinary punctuation would have to be a letter, only a
             // known word is reason enough to believe it was one. Between
@@ -69,14 +76,18 @@ extension LayoutDecisionScorer {
                   knownFrequency(mappedCore.lowercased(), language: mappedLanguage) == nil
             else { return result }
             if Self.isRussianEnglish(typedLanguage, mappedLanguage),
-               !Self.readsAsMachineText(typedLanguage == "en" ? typedCore : mappedCore) {
+               !Self.readsAsMachineText(typedLanguage == "en" ? englishCore : mappedCore) {
                 return result
             }
             return Verdict(decision: .undecided, confidence: .low, margin: result.margin)
         }
 
+        // The reading that swallows the tail has to be a better word than the
+        // core it swallows: `at.` is `at` and a full stop long before it is
+        // `фею`, however badly `at.` reads as one English word.
         if coreEnd < end, let letters = verdict(upTo: end), letters.decision == .switchLayout,
-           knownFrequency(String(pairs[start..<end].map(\.1)).lowercased(), language: mappedLanguage) != nil {
+           let whole = knownFrequency(String(pairs[start..<end].map(\.1)).lowercased(), language: mappedLanguage),
+           whole > knownFrequency(String(pairs[start..<coreEnd].map(\.0)).lowercased(), language: typedLanguage) ?? -.infinity {
             return .rewrite(word: String(pairs[start..<end].map(\.0)),
                             replacement: pureHead + String(pairs[start..<end].map(\.1)) + pureTail,
                             verdict: letters)
@@ -99,5 +110,22 @@ extension LayoutDecisionScorer {
 
     private static func isWordy(_ character: Character) -> Bool {
         character.isLetter || character.isNumber
+    }
+
+    /// `"c"`, `'em'`: a quote opened and closed inside one token is a literal
+    /// in code or a quoted term in prose, and on the Russian layout the two
+    /// quote keys are `э` and `Э`, so the lists hold junk such as `эс` that
+    /// would otherwise claim it. No Russian word opens and closes on `э`.
+    static func isQuotedLiteral(_ token: String) -> Bool {
+        guard let first = token.first, first == "\"" || first == "'", token.count > 2 else { return false }
+        return token.dropFirst().contains(first)
+    }
+
+    /// Up to four capitals and nothing else is an abbreviation, `KB`, `TLS`,
+    /// `DDC`, and the lists carry a listed word for too many of them (`ЛИ`,
+    /// `ВВС`). A word shouted on the wrong layout is left alone with them;
+    /// the corpora hold none, and the stakes in code are higher.
+    static func isAbbreviation<Core: Collection>(_ core: Core) -> Bool where Core.Element == Character {
+        (2...4).contains(core.count) && core.allSatisfy(\.isUppercase)
     }
 }

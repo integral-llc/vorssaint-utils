@@ -5,13 +5,21 @@ import Foundation
 
 /// What is known about a spelling in one language. The scorer weighs two
 /// spellings of the same keystrokes against each other and only ever asks
-/// these two questions, so the data behind them can change without it.
+/// these three questions, so the data behind them can change without it.
 protocol LayoutLanguageEvidence {
     func supports(_ language: String) -> Bool
     /// Zipf frequency, about 1 for rare up to about 7.5 for the commonest
     /// words, or nil when the language's word list does not carry the word.
     func frequency(of word: String, language: String) -> Double?
     func logLikelihood(of word: String, language: String) -> Double
+    /// The highest frequency among listed words one slip away from `word`:
+    /// a letter dropped, added, replaced or swapped with its neighbour. nil
+    /// when no listed word is that close.
+    func slipFrequency(of word: String, language: String) -> Double?
+}
+
+extension LayoutLanguageEvidence {
+    func slipFrequency(of word: String, language: String) -> Double? { nil }
 }
 
 /// Word lists and character models shipped with the app, one pair per
@@ -51,6 +59,42 @@ final class BundledLanguageEvidence: LayoutLanguageEvidence {
 
     func logLikelihood(of word: String, language: String) -> Double {
         loaded(language)?.model.logLikelihood(word) ?? Self.unknownLanguageLikelihood
+    }
+
+    /// Every spelling one edit away is tried against the list: some seven
+    /// hundred lookups for a ten-letter word, which is on the order of what
+    /// scoring the word already costs.
+    func slipFrequency(of word: String, language: String) -> Double? {
+        guard let language = loaded(language) else { return nil }
+        let letters = Array(word.lowercased())
+        var best: Double?
+        func consider(_ candidate: [Character]) {
+            guard let frequency = language.frequencies[String(candidate)] else { return }
+            best = max(best ?? -.infinity, frequency)
+        }
+        for index in 0...letters.count {
+            if index < letters.count {
+                var dropped = letters
+                dropped.remove(at: index)
+                consider(dropped)
+                for letter in language.model.letters where letter != letters[index] {
+                    var replaced = letters
+                    replaced[index] = letter
+                    consider(replaced)
+                }
+            }
+            if index + 1 < letters.count {
+                var swapped = letters
+                swapped.swapAt(index, index + 1)
+                consider(swapped)
+            }
+            for letter in language.model.letters {
+                var added = letters
+                added.insert(letter, at: index)
+                consider(added)
+            }
+        }
+        return best
     }
 
     /// True once the language is in memory. Never waits: the first read parses

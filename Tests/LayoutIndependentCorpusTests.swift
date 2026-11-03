@@ -36,19 +36,19 @@ enum LayoutIndependentCorpusTests {
         }
     }
 
-    /// Set just under what the shipped data measured on 2026-11-02, so noise
-    /// passes and a real regression does not: unknown words 93.4% (ru) and
-    /// 95.8% (en) with no false correction, code 0.108%, the rest 0.
+    /// Set just under what the shipped data measured on 2026-11-03, so noise
+    /// passes and a real regression does not: unknown words 98.9% (ru) and
+    /// 99.4% (en) with no false correction, code 0.047%, the rest 0.
     private static let gates: [String: Gate] = [
-        "unknown-ru": Gate(recall: 0.91, falseCorrections: 0.001),
-        "unknown-en": Gate(recall: 0.94, falseCorrections: 0.001),
-        "typo-ru": Gate(recall: nil, falseCorrections: 0.0015),
-        "typo-en": Gate(recall: nil, falseCorrections: 0.0015),
-        "name-ru": Gate(recall: nil, falseCorrections: 0.002),
-        "name-en": Gate(recall: nil, falseCorrections: 0.002),
+        "unknown-ru": Gate(recall: 0.985, falseCorrections: 0.001),
+        "unknown-en": Gate(recall: 0.99, falseCorrections: 0.001),
+        "typo-ru": Gate(recall: nil, falseCorrections: 0.001),
+        "typo-en": Gate(recall: nil, falseCorrections: 0.001),
+        "name-ru": Gate(recall: nil, falseCorrections: 0.001),
+        "name-en": Gate(recall: nil, falseCorrections: 0.001),
         "punctuation": Gate(recall: nil, falseCorrections: 0),
         "url": Gate(recall: 1, falseCorrections: 0),
-        "code": Gate(recall: nil, falseCorrections: 0.0015),
+        "code": Gate(recall: nil, falseCorrections: 0.0007),
     ]
 
     static func run(_ suite: TestSuite) {

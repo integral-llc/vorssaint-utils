@@ -51,6 +51,16 @@ struct LayoutDecisionScorer {
     struct Thresholds {
         /// Margin either spelling must clear to be believed at all.
         var decisive = 1.5
+        /// For a word neither list carries, the bar in total log-likelihood
+        /// instead: per character it is steep for a short word and eases as
+        /// the predictions add up, but never below `decisiveFloor`.
+        var decisiveEvidence = 10.0
+        var decisiveFloor = 0.6
+        /// A word of fewer letters than this is settled by the sentence it
+        /// is in, or by nothing: `vs.` against `мы.` is two letters and a
+        /// full stop, and the lists alone cannot tell the abbreviation from
+        /// the pronoun.
+        var shortWord = 3
         var highConfidence = 4.0
         /// Below this length every missing character raises the bar for high
         /// confidence, because a single list entry tips a short word.
@@ -105,13 +115,21 @@ struct LayoutDecisionScorer {
         let mappedScore = score(mappedLower, language: mappedLanguage)
         let typedFrequency = knownFrequency(typedLower, language: typedLanguage)
         let mappedFrequency = knownFrequency(mappedLower, language: mappedLanguage)
+        if typedFrequency == nil, mappedFrequency == nil,
+           isSlip(typedLower, language: typedLanguage, over: mappedLower, language: mappedLanguage) {
+            return Verdict(decision: .keep, confidence: .low, margin: thresholds.decisive)
+        }
 
         // A word that is decisive on its own is never reopened: that is what
         // keeps a Russian sentence from turning `here` into Cyrillic. Only a
         // near tie listens to the sentence, and only a near tie with no
         // sentence around it falls back on which spelling is the commoner word.
+        // A word the user has typed before is on a list of their own.
+        let decisive = decisiveMargin(typed: typed, mapped: mapped,
+                                      listed: typedFrequency != nil || mappedFrequency != nil
+                                          || personalBonus(typedLower) > 0)
         var margin = typedScore - mappedScore
-        if abs(margin) < thresholds.decisive {
+        if abs(margin) < decisive {
             if abs(contextLean) >= thresholds.contextActive {
                 margin += thresholds.contextWeight * contextLean
             } else {
@@ -122,12 +140,12 @@ struct LayoutDecisionScorer {
             }
         }
 
-        if margin > thresholds.decisive {
+        if margin > decisive {
             return Verdict(decision: .keep,
                            confidence: confidence(margin: margin, length: typed.count),
                            margin: margin)
         }
-        if -margin > thresholds.decisive {
+        if -margin > decisive {
             let dominant = (mappedFrequency ?? 0) >= thresholds.commonTargetFrequency
                 && (mappedFrequency ?? 0) - (typedFrequency ?? thresholds.absentFrequency)
                     >= thresholds.dominanceGap
@@ -136,6 +154,36 @@ struct LayoutDecisionScorer {
                            margin: -margin)
         }
         return Verdict(decision: .undecided, confidence: .low, margin: abs(margin))
+    }
+
+    /// A word in no list that is one slip away from a listed word of the
+    /// layout it was typed on, while its other spelling is one slip away from
+    /// nothing, is a typo and not a layout slip: `гркфа` is `графа` with two
+    /// letters swapped, and `uhraf` is near nothing in English. Measured on
+    /// six thousand typos and six and a half thousand words typed on the
+    /// wrong layout, the rule covers 97% of the typos and four of the slips.
+    private func isSlip(_ typed: String, language typedLanguage: String,
+                        over mapped: String, language mappedLanguage: String) -> Bool {
+        guard typed.allSatisfy(\.isLetter), mapped.allSatisfy(\.isLetter) else { return false }
+        return evidence.slipFrequency(of: typed, language: typedLanguage) != nil
+            && evidence.slipFrequency(of: mapped, language: mappedLanguage) == nil
+    }
+
+    /// The character models score per character, so one margin asks a long
+    /// word for far more evidence in total than a short one. Where neither
+    /// spelling is a listed word the characters are all there is to go on,
+    /// and `кляузничавший` scoring 1.3 ahead on each of its fourteen
+    /// predictions is no near tie, while a four-letter word has to be ahead
+    /// by 2.0 on each of its five. Plain letters only: punctuation keys are
+    /// judged by their own rules, and code strings them between words.
+    private func decisiveMargin(typed: String, mapped: String, listed: Bool) -> Double {
+        let length = min(typed.count, mapped.count)
+        if length < thresholds.shortWord { return thresholds.highConfidence }
+        guard !listed, typed.allSatisfy(\.isLetter), mapped.allSatisfy(\.isLetter) else {
+            return thresholds.decisive
+        }
+        // One prediction per character plus the end of the word.
+        return max(thresholds.decisiveFloor, thresholds.decisiveEvidence / Double(length + 1))
     }
 
     private func confidence(margin: Double, length: Int) -> LayoutCorrectionConfidence {

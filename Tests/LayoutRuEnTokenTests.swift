@@ -30,6 +30,10 @@ enum LayoutRuEnTokenTests {
         }
         let scorer = LayoutDecisionScorer(evidence: evidence)
         punctuationChecks(suite, scorer: scorer)
+        quotationChecks(suite, scorer: scorer)
+        tailChecks(suite, scorer: scorer)
+        literalChecks(suite, scorer: scorer)
+        slipChecks(suite, scorer: scorer)
         urlChecks(suite, scorer: scorer)
         otherPairChecks(suite)
     }
@@ -107,6 +111,97 @@ enum LayoutRuEnTokenTests {
         }
     }
 
+    /// The apostrophe key is э, and a Russian word that starts with it is
+    /// judged on the word after the quote, with no help from the sentence.
+    private static func quotationChecks(_ suite: TestSuite, scorer: LayoutDecisionScorer) {
+        // None of these is in the word list; each is Russian, even with a
+        // further Russian-only key inside (ё on the backtick, х on the bracket).
+        for (typed, expected) in [("'nfgyjcnm", "этапность"), ("'ujwtynhbxysq", "эгоцентричный"),
+                                  ("'ktrnhjkbp`h", "электролизёр"), ("'ythujnt[yjkjubz", "энерготехнология")] {
+            let result = rewritten(scorer, typed, typedLanguage: "en")
+            suite.expect(result == expected, "\(typed) becomes \(expected), got \(result ?? "nothing")")
+        }
+        // A quoted English word, an elision, a quoted literal, a quote that
+        // is closed, doubled, or followed by machine text.
+        for token in ["'hello", "'category", "'at", "'em", "'tis", "'cause", "'tool'", "'VUWL'", "'at'",
+                      "''abc", "'.abc", "'v1"] {
+            let result = rewritten(scorer, token, typedLanguage: "en")
+            suite.expect(result == nil, "\(token) is left alone, got \(result ?? "")")
+        }
+        // Five Russian words before it would tip a bare misspelling, but not
+        // one that opens a quotation: that is where the language changes.
+        for token in ["'carire", "'centipee"] {
+            let judgement = scorer.judgement(typed: token, typedLanguage: "en",
+                                             mapped: table.mapForward(token) ?? "", mappedLanguage: "ru",
+                                             contextLean: -2)
+            if case .rewrite(_, let replacement, _) = judgement {
+                suite.expect(false, "\(token) is left alone under a Russian sentence, got \(replacement)")
+            }
+        }
+        suite.expect(rewritten(scorer, "эрудщ", typedLanguage: "ru") == nil,
+                     "typed on the Russian layout, an unknown э-word is not turned into a quoted English one")
+        // Undoing the correction refuses the token as typed, quote and all.
+        var refusing = scorer
+        refusing.vocabulary = Refusing(refused: ["'nfgyjcnm"])
+        suite.expect(rewritten(refusing, "'nfgyjcnm", typedLanguage: "en") == nil,
+                     "a quoted correction that was taken back is not made again")
+    }
+
+    /// A tail the other layout reads as a letter is swallowed only into a
+    /// commoner word than the core it would take with it, and a core of
+    /// fewer than three letters is settled by the sentence or not at all.
+    private static func tailChecks(_ suite: TestSuite, scorer: LayoutDecisionScorer) {
+        for (typed, expected) in [("cnf;", "стаж"), ("k.,k.", "люблю"), ("ghbdtn,", "привет,")] {
+            let result = rewritten(scorer, typed, typedLanguage: "en")
+            suite.expect(result == expected, "\(typed) becomes \(expected), got \(result ?? "nothing")")
+        }
+        // `фею`, `шею` and `инж` are listed, and far rarer than `at`, `it`, `by`.
+        for token in ["at.", "it.", "by:", "he,", "vs.", "vs,"] {
+            let result = rewritten(scorer, token, typedLanguage: "en")
+            suite.expect(result == nil, "\(token) is left alone, got \(result ?? "")")
+        }
+        let sentence = scorer.judgement(typed: "vs.", typedLanguage: "en",
+                                        mapped: table.mapForward("vs.") ?? "", mappedLanguage: "ru",
+                                        contextLean: -2)
+        if case .rewrite(_, let replacement, _) = sentence {
+            suite.expect(replacement == "мы.", "under a Russian sentence vs. is мы., got \(replacement)")
+        } else {
+            suite.expect(false, "under a Russian sentence vs. becomes мы.")
+        }
+    }
+
+    /// Literals and abbreviations are code, whatever the lists make of them.
+    private static func literalChecks(_ suite: TestSuite, scorer: LayoutDecisionScorer) {
+        for token in ["\"c\"", "\"ru\"", "'em'", "\"KB\",", "KB.", "DDC;", "TLS", "XDR,"] {
+            let result = rewritten(scorer, token, typedLanguage: "en")
+            suite.expect(result == nil, "\(token) is left alone, got \(result ?? "")")
+        }
+        for (typed, expected) in [("\"nj", "Это"), ("GHBDTN", "ПРИВЕТ"), ("Ghbdtn", "Привет")] {
+            let result = rewritten(scorer, typed, typedLanguage: "en")
+            suite.expect(result == expected, "\(typed) becomes \(expected), got \(result ?? "nothing")")
+        }
+        suite.expect(LayoutDecisionScorer.isQuotedLiteral("\"c\"") && LayoutDecisionScorer.isQuotedLiteral("'at'")
+                        && !LayoutDecisionScorer.isQuotedLiteral("\"nj") && !LayoutDecisionScorer.isQuotedLiteral("\"'")
+                        && !LayoutDecisionScorer.isQuotedLiteral("don't"),
+                     "a literal opens and closes on the same quote with something between")
+        suite.expect(LayoutDecisionScorer.isAbbreviation("KB") && LayoutDecisionScorer.isAbbreviation("PDTR")
+                        && !LayoutDecisionScorer.isAbbreviation("GHBDTN") && !LayoutDecisionScorer.isAbbreviation("Kb")
+                        && !LayoutDecisionScorer.isAbbreviation("K"),
+                     "an abbreviation is two to four capitals")
+    }
+
+    /// A typo of a listed word stays a typo on the shipped data.
+    private static func slipChecks(_ suite: TestSuite, scorer: LayoutDecisionScorer) {
+        for (typed, language) in [("гркфа", "ru"), ("вгьрк", "ru"), ("dsryl", "en"), ("flsre", "en")] {
+            suite.expect(judgement(scorer, typed, typedLanguage: language) == .keep(word: typed),
+                         "\(typed) is one slip from a word of its own layout and is kept")
+        }
+        for (typed, expected) in [("wjrfdibq", "цокавший"), ("cbvvjhaysq", "симморфный"), ("flfvcbn", "адамсит")] {
+            let result = rewritten(scorer, typed, typedLanguage: "en")
+            suite.expect(result == expected, "\(typed) becomes \(expected), got \(result ?? "nothing")")
+        }
+    }
+
     static let urlSpellings = LayoutSwitcherSupport.mistypedURLSpellings(
         english: [LayoutDetectionTests.glyphs(LayoutDetectionTests.latin + "/")],
         russian: [LayoutDetectionTests.glyphs(LayoutDetectionTests.cyrillic + ".")])
@@ -149,7 +244,8 @@ enum LayoutRuEnTokenTests {
     /// Both rules belong to the Russian/English pair. Any other pair keeps
     /// the stricter guard and gets no URL rule.
     private static func otherPairChecks(_ suite: TestSuite) {
-        let scorer = LayoutDecisionScorer(evidence: StubEvidence(likelihoods: ["убеди": -2, "https://google.com": -2]))
+        let scorer = LayoutDecisionScorer(evidence: StubEvidence(likelihoods: ["убеди": -2, "этапность": -2,
+                                                                               "https://google.com": -2]))
         func decision(_ typed: String, _ typedLanguage: String, _ mapped: String,
                       _ mappedLanguage: String) -> LayoutDecisionScorer.Judgement {
             scorer.judgement(typed: typed, typedLanguage: typedLanguage, mapped: mapped, mappedLanguage: mappedLanguage)
@@ -159,6 +255,8 @@ enum LayoutRuEnTokenTests {
         }
         suite.expect(decision("e,tlb", "en", "убеди", "uk") == .undecided,
                      "on another pair an unknown word that needs a comma to be a letter stays undecided")
+        suite.expect(decision("'nfgyjcnm", "en", "этапность", "uk") == .undecided,
+                     "on another pair an opening quote is still machine text")
         if case .rewrite = decision("реезыЖ..пщщпдуюсщь", "uk", "https://google.com", "en") {
             suite.expect(false, "the URL rule does not run for another pair")
         }
