@@ -12,6 +12,10 @@ struct LayoutSwitcherConfig: Equatable {
     /// the feature on the shortcut alone, which is the only mode that needs no
     /// judgement about what the user meant.
     var automatic: Bool = false
+
+    /// Bundle identifiers where automatic mode stands down. The shortcut does
+    /// not ask: pressing it is a request, wherever it is pressed.
+    var excludedApps: Set<String> = []
 }
 
 /// A physical key on one of the two layers a word is typed on. Without the
@@ -66,6 +70,9 @@ struct LayoutTypingBuffer: Equatable {
     struct Finished: Equatable {
         let token: String
         let ending: Ending
+        /// The layout was switched by hand while the word was being typed:
+        /// the user is fixing it, and automatic mode leaves it to them.
+        var isSkipped = false
     }
 
     /// Bounded so a session of typing cannot grow it without limit.
@@ -78,6 +85,7 @@ struct LayoutTypingBuffer: Equatable {
     /// Only a space: Return committed the line somewhere, and a word that
     /// ended any other way is not one keystroke behind the caret.
     private(set) var lastFinished = ""
+    private var skipsWord = false
 
     mutating func type(_ typed: String, earlyBoundaries: Set<Character>) -> Finished? {
         guard !typed.isEmpty else { return nil }
@@ -88,19 +96,29 @@ struct LayoutTypingBuffer: Equatable {
             guard hadWord, typed.count == 1, let character = typed.first,
                   earlyBoundaries.contains(character)
             else { return nil }
-            return Finished(token: typing, ending: .punctuation)
+            return Finished(token: typing, ending: .punctuation, isSkipped: skipsWord)
         }
         let token = typing
+        let skipped = skipsWord
         typing = ""
+        skipsWord = false
         lastFinished = typed == " " ? token : ""
         guard !token.isEmpty else { return nil }
-        if typed == " " { return Finished(token: token, ending: .space) }
-        return typed.allSatisfy(\.isNewline) ? Finished(token: token, ending: .newline) : nil
+        if typed == " " { return Finished(token: token, ending: .space, isSkipped: skipped) }
+        return typed.allSatisfy(\.isNewline) ? Finished(token: token, ending: .newline, isSkipped: skipped) : nil
+    }
+
+    /// A manual layout switch. Only a word already under way is affected; a
+    /// switch between words is the user getting ready for the next one.
+    mutating func skipCurrentWord() {
+        if typing.contains(where: { $0.isLetter || $0.isNumber }) { skipsWord = true }
     }
 
     mutating func deleteBackward() {
         if !typing.isEmpty {
             typing.removeLast()
+            // Deleted down to nothing: what comes next is a new word.
+            if typing.isEmpty { skipsWord = false }
         } else if !lastFinished.isEmpty {
             // The space just went, so the caret is back against the word and
             // the word is being typed again. Leaving it as finished would have
@@ -123,6 +141,7 @@ struct LayoutTypingBuffer: Equatable {
     mutating func clear() {
         typing = ""
         lastFinished = ""
+        skipsWord = false
     }
 }
 
@@ -252,6 +271,11 @@ enum LayoutSwitcherSupport {
         return character
     }
 
+    static func correctsAutomatically(in bundleIdentifier: String?, excluding excluded: Set<String>) -> Bool {
+        guard let bundleIdentifier else { return true }
+        return !excluded.contains(bundleIdentifier)
+    }
+
     /// The word ending at the caret. Splitting on whitespace alone keeps
     /// punctuation attached, which is what the user sees as one token.
     static func trailingWord(in text: String) -> String {
@@ -260,9 +284,13 @@ enum LayoutSwitcherSupport {
 
     /// Whether a token is worth offering to correct at all. The shortcut path
     /// skips this: the user pressing it has already answered the question.
-    static func isCorrectable(_ word: String, minimumLength: Int) -> Bool {
+    /// `urlSpellings` are URL prefixes as the wrong layout types them, which
+    /// look structured and still need judging.
+    static func isCorrectable(_ word: String, minimumLength: Int, urlSpellings: Set<String> = []) -> Bool {
         guard word.count >= minimumLength else { return false }
         guard !word.allSatisfy({ $0.isNumber || $0 == "-" }) else { return false }
+        let lowered = word.lowercased()
+        if urlSpellings.contains(where: { lowered.hasPrefix($0) }) { return true }
         return !looksStructured(word)
     }
 

@@ -10,8 +10,8 @@ import Foundation
 enum LayoutDetectionTests {
     // Key for key, the US and Russian layouts. `!` closes both: a key the two
     // agree on, which a real pair has plenty of.
-    private static let latin = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>~!()"
-    private static let cyrillic = "йцукенгшщзхъфывапролджэячсмитьбюёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮЁ!()"
+    static let latin = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>~!()"
+    static let cyrillic = "йцукенгшщзхъфывапролджэячсмитьбюёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮЁ!()"
 
     private struct Row {
         let input: String
@@ -369,7 +369,7 @@ enum LayoutDetectionTests {
                      "no real word is switched with confidence: \(confidentFalsePositives)")
     }
 
-    private static func glyphs(_ keys: String) -> [Int: String] {
+    static func glyphs(_ keys: String) -> [Int: String] {
         Dictionary(uniqueKeysWithValues: keys.enumerated().map { ($0.offset, String($0.element)) })
     }
 

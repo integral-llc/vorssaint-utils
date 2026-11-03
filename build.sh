@@ -604,9 +604,13 @@ if (( TEST )); then
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutLanguageEvidence.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutDecisionScorer.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutTokenJudgement.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutRussianEnglishRules.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutCorrectionWatch.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutOwnSwitches.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutSentenceContext.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutVocabulary.swift
         Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
+        Sources/Vorssaint/Core/LayoutSwitcherExclusionStrings.swift
         Sources/Vorssaint/Services/YouTubeTranscriber/YouTubeTranscriberSupport.swift
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
         Sources/Vorssaint/Services/TVCast/TVCastSupport.swift
@@ -691,6 +695,7 @@ if (( TEST )); then
         ./Tests/DeployVersionTests.sh || test_status=1
         ./Tests/UninstallSpacesTests.sh || test_status=1
         ./Tests/DeveloperInstallIsolationTests.sh || test_status=1
+        PYTHONDONTWRITEBYTECODE=1 python3 -I Tests/LayoutSubtitleWordsTests.py || test_status=1
     fi
     discard_test_preferences || test_status=1
     exit $test_status

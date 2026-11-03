@@ -314,6 +314,7 @@ enum DefaultsKey {
     // Learned words. Deliberately unregistered and absent from the backup's
     // key lists: typed text stays on the Mac it was typed on.
     static let layoutSwitcherVocabulary = "layoutSwitcherVocabulary"
+    static let layoutSwitcherExcludedApps = "layoutSwitcherExcludedApps" // [bundle id] where nothing is corrected unasked
     static let panelControlLayoutSwitcher = "panelControlLayoutSwitcher"
     static let transcriberLocation = "transcriberLocation"       // TranscriptionLocation.rawValue
     static let transcriberRemoteHost = "transcriberRemoteHost"   // host of a whisper.cpp server
@@ -1595,6 +1596,7 @@ enum Defaults {
         DefaultsKey.layoutSwitcherEnabled: false,
         DefaultsKey.layoutSwitcherMinimumWordLength: defaultLayoutSwitcherWordLength,
         DefaultsKey.layoutSwitcherAutomatic: false,
+        DefaultsKey.layoutSwitcherExcludedApps: [String](),
         DefaultsKey.transcriberLocation: TranscriptionLocation.local.rawValue,
         DefaultsKey.transcriberRemoteHost: "",
         DefaultsKey.transcriberModel: defaultTranscriberModel,

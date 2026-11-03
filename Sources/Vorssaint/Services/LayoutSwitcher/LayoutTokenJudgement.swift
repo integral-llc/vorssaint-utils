@@ -29,6 +29,10 @@ extension LayoutDecisionScorer {
                    contextLean: Double = 0) -> Judgement {
         let pairs = Array(zip(typed, mapped))
         guard pairs.count == typed.count, pairs.count == mapped.count else { return .undecided }
+        if let url = mistypedURL(typed: typed, typedLanguage: typedLanguage,
+                                 mapped: mapped, mappedLanguage: mappedLanguage) {
+            return url
+        }
 
         // Punctuation under both readings: `!`, a bracket, or `^` that the
         // other layout types as a comma. Not part of any word on either side
@@ -54,7 +58,9 @@ extension LayoutDecisionScorer {
                                       contextLean: contextLean)
             // `file.txt` has a Cyrillic spelling and so does `example.com`.
             // Where ordinary punctuation would have to be a letter, only a
-            // known word is reason enough to believe it was one.
+            // known word is reason enough to believe it was one. Between
+            // Russian and English that holds only where the English reading
+            // looks like machine text; `б`, `ю` and `э` are on those keys.
             let leansOnPunctuation = core.contains {
                 Self.isWordy($0.0) != Self.isWordy($0.1)
                     && (Self.ordinaryPunctuation.contains($0.0) || Self.ordinaryPunctuation.contains($0.1))
@@ -62,6 +68,10 @@ extension LayoutDecisionScorer {
             guard result.decision == .switchLayout, leansOnPunctuation,
                   knownFrequency(mappedCore.lowercased(), language: mappedLanguage) == nil
             else { return result }
+            if Self.isRussianEnglish(typedLanguage, mappedLanguage),
+               !Self.readsAsMachineText(typedLanguage == "en" ? typedCore : mappedCore) {
+                return result
+            }
             return Verdict(decision: .undecided, confidence: .low, margin: result.margin)
         }
 

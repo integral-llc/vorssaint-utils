@@ -31,6 +31,9 @@ final class LayoutSwitcherService: ObservableObject {
     /// Punctuation that ends a word the moment it is typed. Read off the
     /// enabled layouts together with `layoutCache`, and as stale as it is.
     private var earlyBoundaries: Set<Character> = []
+    /// URL prefixes as the Russian layouts type them. Read off the enabled
+    /// layouts with `earlyBoundaries`, and as stale as they are.
+    private var urlSpellings: Set<String> = []
     private var config = LayoutSwitcherConfig()
     private var tableCache: [String: [LayoutKey: String]] = [:]
     /// Asking the system for the enabled layouts on every finished word is a
@@ -39,8 +42,10 @@ final class LayoutSwitcherService: ObservableObject {
     private var layoutCache: [EnabledLayout]?
     private var gate = LayoutConfidenceGate()
     private var context = LayoutSentenceContext()
-    /// What automatic mode last rewrote, so the shortcut can take it back.
-    private var lastAutomatic: AutomaticCorrection?
+    /// What automatic mode last rewrote, so the shortcut can take it back,
+    /// and whether the user is taking it back by hand.
+    private var watch = LayoutCorrectionWatch()
+    private var ownSwitches = LayoutOwnSwitches()
     /// Counts everything that can move the caret or change the text behind it.
     /// A correction is decided a moment after its word finished, and it only
     /// goes ahead if this still reads what it read then.
@@ -63,14 +68,7 @@ final class LayoutSwitcherService: ObservableObject {
         let language: String?
     }
 
-    private struct AutomaticCorrection {
-        let original: String
-        let corrected: String
-        /// The word inside `original`, without the punctuation around it.
-        let word: String
-        /// nil when the layout did not follow the word, so there is none to restore.
-        let previousSourceID: String?
-    }
+    private typealias AutomaticCorrection = LayoutCorrectionWatch.Correction
 
     private struct FinishedWord {
         let token: String
@@ -79,6 +77,14 @@ final class LayoutSwitcherService: ObservableObject {
         /// apps where Return alone sends, and putting back the wrong one sends.
         let flags: CGEventFlags
         let activity: UInt64
+    }
+
+    /// What one keystroke amounted to for automatic mode.
+    private enum Recorded {
+        case nothing
+        case judge(FinishedWord)
+        /// The user deleted a correction and typed the original over it.
+        case reverted(word: String)
     }
 
     private enum Outcome {
@@ -116,8 +122,14 @@ final class LayoutSwitcherService: ObservableObject {
             name: NSNotification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String),
             object: nil
         )
-        // Another app is another piece of writing. Neither the sentence so far
-        // nor a doubtful correction waiting for a second carries over.
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(selectedInputSourceChanged),
+            name: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
+            object: nil
+        )
+        // Another app is another piece of writing, with its own caret. Nothing
+        // about the text in the last one carries over.
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(applicationChanged),
@@ -131,16 +143,30 @@ final class LayoutSwitcherService: ObservableObject {
             tableCache.removeAll()
             layoutCache = nil
             earlyBoundaries = []
+            urlSpellings = []
         }
         // The tap cannot ask the system for layouts, so they are read again
         // here rather than whenever the next word happens to need them.
         _ = enabledLayouts()
     }
 
+    /// A switch by hand in the middle of a word means the user is fixing that
+    /// word themselves, and a correction on top of theirs would undo it.
+    @objc private func selectedInputSourceChanged() {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let id = KeyboardLayoutGlyph.property(source, kTISPropertyInputSourceID)
+        else { return }
+        let now = Date()
+        eventLock.withLock {
+            guard !ownSwitches.claim(id, at: now) else { return }
+            typingBuffer.skipCurrentWord()
+        }
+    }
+
     @objc private func applicationChanged() {
         eventLock.withLock {
             context.reset()
-            gate.reset()
+            clearTypingState()
         }
     }
 
@@ -157,7 +183,9 @@ final class LayoutSwitcherService: ObservableObject {
             minimumWordLength: Defaults.sanitizedLayoutSwitcherWordLength(
                 defaults.integer(forKey: DefaultsKey.layoutSwitcherMinimumWordLength)
             ),
-            automatic: defaults.bool(forKey: DefaultsKey.layoutSwitcherAutomatic)
+            automatic: defaults.bool(forKey: DefaultsKey.layoutSwitcherAutomatic),
+            excludedApps: Set(Defaults.sanitizedBundleIdentifierList(
+                defaults.stringArray(forKey: DefaultsKey.layoutSwitcherExcludedApps) ?? []))
         )
         eventLock.withLock {
             config = nextConfig
@@ -209,7 +237,7 @@ final class LayoutSwitcherService: ObservableObject {
                 // Backspacing over the space puts a corrected word back under
                 // the caret, and it can still be taken back from there.
                 return ShortcutTarget(word: typing, deleteCount: typing.count, suffix: "",
-                                      automatic: lastAutomatic?.corrected == typing ? lastAutomatic : nil)
+                                      automatic: watch.last?.corrected == typing ? watch.last : nil)
             }
             let finished = typingBuffer.lastFinished
             guard !finished.isEmpty else { return nil }
@@ -217,7 +245,7 @@ final class LayoutSwitcherService: ObservableObject {
             return ShortcutTarget(word: finished,
                                   deleteCount: finished.count + 1,
                                   suffix: " ",
-                                  automatic: lastAutomatic?.corrected == finished ? lastAutomatic : nil)
+                                  automatic: watch.last?.corrected == finished ? watch.last : nil)
         }
         // An automatic correction is taken back to exactly what was typed.
         // Mapping it again could land on a third layout's spelling instead.
@@ -243,7 +271,7 @@ final class LayoutSwitcherService: ObservableObject {
             }
             activity &+= 1
             guard target.automatic != nil else { return }
-            lastAutomatic = nil
+            watch.clear()
             // The correction told the sentence it was in the other language.
             // It was wrong about the word, so it is not trusted about that.
             context.reset()
@@ -308,9 +336,15 @@ final class LayoutSwitcherService: ObservableObject {
         }
         let boundaries = LayoutSwitcherSupport.earlyBoundaries(
             in: layouts.compactMap { glyphs(for: $0.source, id: $0.id) })
+        func glyphTables(_ language: String) -> [[LayoutKey: String]] {
+            layouts.filter { $0.language == language }.compactMap { glyphs(for: $0.source, id: $0.id) }
+        }
+        let spellings = LayoutSwitcherSupport.mistypedURLSpellings(english: glyphTables("en"),
+                                                                    russian: glyphTables("ru"))
         eventLock.withLock {
             layoutCache = layouts
             earlyBoundaries = boundaries
+            urlSpellings = spellings
         }
         return layouts
     }
@@ -325,6 +359,14 @@ final class LayoutSwitcherService: ObservableObject {
     @discardableResult
     private func selectLayout(id: String) -> Bool {
         guard let layout = enabledLayouts().first(where: { $0.id == id }) else { return false }
+        return select(layout)
+    }
+
+    /// Every switch the service makes goes through here, so the announcement
+    /// that follows is not mistaken for the user switching by hand.
+    private func select(_ layout: EnabledLayout) -> Bool {
+        let now = Date()
+        eventLock.withLock { ownSwitches.expect(layout.id, at: now) }
         return TISSelectInputSource(layout.source) == noErr
     }
 
@@ -528,6 +570,7 @@ final class LayoutSwitcherService: ObservableObject {
             eventLock.withLock {
                 activity &+= 1
                 typingBuffer.deleteBackward()
+                watch.deleted(typing: typingBuffer.typing, lastFinished: typingBuffer.lastFinished)
             }
             return Unmanaged.passUnretained(event)
         case kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow, kVK_Escape,
@@ -547,7 +590,10 @@ final class LayoutSwitcherService: ObservableObject {
         guard length > 0 else { return Unmanaged.passUnretained(event) }
         let typed = String(utf16CodeUnits: characters, count: length)
 
-        if let finished = eventLock.withLock({ record(typed, flags: event.flags) }) {
+        switch eventLock.withLock({ record(typed, flags: event.flags) }) {
+        case .nothing:
+            break
+        case .judge(let finished):
             // Return is judged a moment later: the app has to have acted on it
             // before the text can show whether it was a new line or a send.
             let delay: DispatchTimeInterval = finished.ending == .newline ? .milliseconds(40) : .never
@@ -557,25 +603,37 @@ final class LayoutSwitcherService: ObservableObject {
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
             }
+        case .reverted(let word):
+            // Refusing writes to disk, which the tap thread does not wait on.
+            DispatchQueue.main.async { [vocabulary] in vocabulary.refuse(word) }
         }
         return Unmanaged.passUnretained(event)
     }
 
-    /// Takes one keystroke's text into the buffer. Returns the token it
-    /// finished when automatic mode should look at it. Caller holds `eventLock`.
-    private func record(_ typed: String, flags: CGEventFlags) -> FinishedWord? {
+    /// Takes one keystroke's text into the buffer and says what automatic
+    /// mode makes of it. Caller holds `eventLock`.
+    private func record(_ typed: String, flags: CGEventFlags) -> Recorded {
         activity &+= 1
-        guard config.enabled else { return nil }
-        // The corrected word is no longer the last thing that happened.
-        if !typed.allSatisfy(\.isWhitespace) { lastAutomatic = nil }
-        guard let finished = typingBuffer.type(typed, earlyBoundaries: config.automatic ? earlyBoundaries : []),
-              config.automatic,
+        guard config.enabled else { return .nothing }
+        watch.typed(typed)
+        guard let finished = typingBuffer.type(typed, earlyBoundaries: config.automatic ? earlyBoundaries : [])
+        else { return .nothing }
+        if let undone = watch.finished(finished.token) {
+            // The same answer as the shortcut taking it back, except the user
+            // already put the layout where they want it.
+            context.reset()
+            gate.reset()
+            return .reverted(word: undone.word)
+        }
+        guard config.automatic, !finished.isSkipped,
               // Already rewritten when its punctuation went in; the space
               // after it has nothing left to decide.
-              finished.token != lastAutomatic?.corrected,
-              LayoutSwitcherSupport.isCorrectable(finished.token, minimumLength: config.minimumWordLength)
-        else { return nil }
-        return FinishedWord(token: finished.token, ending: finished.ending, flags: flags, activity: activity)
+              finished.token != watch.last?.corrected,
+              LayoutSwitcherSupport.isCorrectable(finished.token, minimumLength: config.minimumWordLength,
+                                                  urlSpellings: urlSpellings)
+        else { return .nothing }
+        return .judge(FinishedWord(token: finished.token, ending: finished.ending, flags: flags,
+                                   activity: activity))
     }
 
     /// Automatic mode. The word is already in the text and the caret has moved
@@ -586,7 +644,12 @@ final class LayoutSwitcherService: ObservableObject {
     /// the other spelling is clearly the better word, and the layout follows
     /// it so the rest of the sentence goes in right.
     private func correctFinishedWord(_ finished: FinishedWord) {
-        guard AXIsProcessTrusted(), !IsSecureEventInputEnabled(),
+        // Not judged at all in an excluded app, so nothing typed there is
+        // counted toward the vocabulary or the sentence either.
+        let excluded = eventLock.withLock { config.excludedApps }
+        guard LayoutSwitcherSupport.correctsAutomatically(
+                in: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, excluding: excluded),
+              AXIsProcessTrusted(), !IsSecureEventInputEnabled(),
               let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
               let currentID = KeyboardLayoutGlyph.property(source, kTISPropertyInputSourceID),
               let current = enabledLayouts().first(where: { $0.id == currentID }),
@@ -628,7 +691,7 @@ final class LayoutSwitcherService: ObservableObject {
                 : confident
         }
         guard goesAhead, replaceText(of: finished, with: candidate.replacement) else { return }
-        let followed = TISSelectInputSource(candidate.layout.source) == noErr
+        let followed = select(candidate.layout)
         eventLock.withLock {
             context.record(candidate.language, at: now)
             switch finished.ending {
@@ -636,10 +699,10 @@ final class LayoutSwitcherService: ObservableObject {
             case .punctuation: typingBuffer.replaceTyping(finished.token, with: candidate.replacement)
             case .newline: return
             }
-            lastAutomatic = AutomaticCorrection(original: finished.token,
-                                                corrected: candidate.replacement,
-                                                word: candidate.word,
-                                                previousSourceID: followed ? currentID : nil)
+            watch.record(AutomaticCorrection(original: finished.token,
+                                             corrected: candidate.replacement,
+                                             word: candidate.word,
+                                             previousSourceID: followed ? currentID : nil))
         }
     }
 
@@ -725,7 +788,7 @@ final class LayoutSwitcherService: ObservableObject {
     /// not a doubtful correction waiting for a second. Caller holds `eventLock`.
     private func clearTypingState() {
         typingBuffer.clear()
-        lastAutomatic = nil
+        watch.clear()
         gate.reset()
         activity &+= 1
     }

@@ -233,7 +233,12 @@ struct MetricsTests {
                 WallpaperThumbnailTests.run(suite)
             }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
-            ("layout-detection", { LayoutDetectionTests.run(suite) }),
+            ("layout-detection", {
+                LayoutDetectionTests.run(suite)
+                LayoutRuEnTokenTests.run(suite)
+                LayoutIndependentCorpusTests.run(suite)
+                LayoutUserIntentTests.run(suite)
+            }),
             ("tv-cast", { TVCastTests.run(suite) }),
         ]
         var selected = Set<String>()

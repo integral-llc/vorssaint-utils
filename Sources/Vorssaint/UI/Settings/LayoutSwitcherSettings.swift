@@ -15,6 +15,9 @@ struct LayoutSwitcherSettings: View {
     /// The button's only feedback: nothing else on the page changes when the
     /// words go. Reopening the page offers it again.
     @State private var learnedForgotten = false
+    /// Read when the page opens. A correction taken back while it is open
+    /// shows up the next time.
+    @State private var refusedWords = LayoutVocabulary.shared.refusedWords
 
     private var text: LayoutSwitcherStrings { FeatureStrings.layoutSwitcher(l10n.language) }
 
@@ -76,13 +79,20 @@ struct LayoutSwitcherSettings: View {
                 Text(text.minimumLengthCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                LayoutSwitcherExclusionsList()
+                    .disabled(!automatic)
             }
             .disabled(!enabled)
 
             Section {
+                LayoutSwitcherRefusedWordsList(words: refusedWords) { word in
+                    LayoutVocabulary.shared.removeRefusal(word)
+                    refusedWords = LayoutVocabulary.shared.refusedWords
+                }
                 Button(learnedForgotten ? text.learnedForgotten : text.forgetLearned) {
                     LayoutSwitcherService.shared.forgetLearnedWords()
                     learnedForgotten = true
+                    refusedWords = []
                 }
                 .disabled(learnedForgotten)
                 Text(text.forgetLearnedCaption)

@@ -15,7 +15,8 @@ protocol LayoutLanguageEvidence {
 }
 
 /// Word lists and character models shipped with the app, one pair per
-/// language, named `<language>_words.txt` and `<language>_charmodel.dat`.
+/// language, named `<language>_words.txt` and `<language>_charmodel.dat`, plus
+/// an optional `<language>_subtitle_words.txt` that only adds words.
 ///
 /// A language is supported only when both halves load. Half the evidence
 /// would still produce a margin, just not one the thresholds were measured
@@ -87,7 +88,13 @@ final class BundledLanguageEvidence: LayoutLanguageEvidence {
                 contentsOf: directory.appendingPathComponent("\(language)_words.txt"), encoding: .utf8)
         else { return nil }
         let frequencies = Self.frequencies(in: words)
-        return frequencies.isEmpty ? nil : Language(frequencies: frequencies, model: model)
+        guard !frequencies.isEmpty else { return nil }
+        // Chat words from subtitles, scaled to the same zipf. Optional, and
+        // never allowed to restate a frequency the main list already gives.
+        let subtitles = (try? String(
+            contentsOf: directory.appendingPathComponent("\(language)_subtitle_words.txt"), encoding: .utf8))
+            .map(Self.frequencies(in:)) ?? [:]
+        return Language(frequencies: frequencies.merging(subtitles) { main, _ in main }, model: model)
     }
 
     static func frequencies(in contents: String) -> [String: Double] {

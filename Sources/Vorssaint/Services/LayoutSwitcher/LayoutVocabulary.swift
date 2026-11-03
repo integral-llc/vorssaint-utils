@@ -104,6 +104,21 @@ final class LayoutVocabulary: LayoutPersonalVocabulary {
         write(snapshot)
     }
 
+    /// Newest first, the order settings shows them in.
+    var refusedWords: [String] {
+        lock.withLock { refusedSeen.sorted { $0.value > $1.value }.map(\.key) }
+    }
+
+    /// Deliberate, like a refusal, so it is written at once.
+    func removeRefusal(_ word: String) {
+        let snapshot = lock.withLock { () -> Stored? in
+            guard refusedSeen.removeValue(forKey: word.lowercased()) != nil else { return nil }
+            unsavedWords = 0
+            return stored()
+        }
+        if let snapshot { write(snapshot) }
+    }
+
     func flush() {
         let snapshot = lock.withLock { () -> Stored? in
             guard unsavedWords > 0 else { return nil }
