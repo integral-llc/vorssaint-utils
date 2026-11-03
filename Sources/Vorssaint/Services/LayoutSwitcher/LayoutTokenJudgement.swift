@@ -97,7 +97,12 @@ extension LayoutDecisionScorer {
         case .switchLayout:
             // The tail was punctuation, so it stays punctuation: whichever of
             // the two characters is not a letter is the one that was meant.
-            let tail = String(pairs[coreEnd..<end].map { Self.isWordy($0.0) ? $0.1 : $0.0 })
+            // Russian is the exception for keys it gives over to a letter.
+            let tail = String(pairs[coreEnd..<end].map { pair in
+                if Self.isWordy(pair.0) { return pair.1 }
+                return Self.typesRussianLetter(pair.0, as: pair.1, typedLanguage: typedLanguage,
+                                               mappedLanguage: mappedLanguage) ? pair.1 : pair.0
+            })
             return .rewrite(word: String(pairs[start..<coreEnd].map(\.0)),
                             replacement: pureHead + String(pairs[start..<coreEnd].map(\.1)) + tail + pureTail,
                             verdict: word)

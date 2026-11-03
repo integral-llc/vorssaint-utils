@@ -52,6 +52,20 @@ extension LayoutDecisionScorer {
             && vocabulary?.isRefused(core) != true
     }
 
+    /// A key at the end of a word that is switching into Russian, typed as
+    /// punctuation on the Latin layout. `;`, `[`, `]` and the backtick are
+    /// `ж`, `х`, `ъ` and `ё` on every Russian layout, which puts its own
+    /// semicolon and brackets on other keys (Shift+4 on Russian - PC types `$`
+    /// here). Somebody typing a Russian word who pressed one of these meant
+    /// the letter: `rfhjnf;` is `каротаж`, never `карота;`. The comma, full
+    /// stop and quotes stay punctuation, as everywhere else, and so do the
+    /// shifted keys: `rfhjnf:` ending in a capital `Ж` is not what anyone typed.
+    static func typesRussianLetter(_ typed: Character, as mapped: Character,
+                                   typedLanguage: String, mappedLanguage: String) -> Bool {
+        typedLanguage == "en" && mappedLanguage == "ru"
+            && mapped.isLetter && mapped.isLowercase && !ordinaryPunctuation.contains(typed)
+    }
+
     /// Punctuation the way code and file names use it, on the English reading
     /// of a token. `б`, `ю` and `э` sit on the comma, full stop and apostrophe
     /// keys, and refusing every unknown word that needs one of them refused a

@@ -86,6 +86,10 @@ enum LayoutDetectionTests {
             ("ghbdtn,", "en", "привет,"), ("ghbdtn!", "en", "привет!"),
             ("руддщб", "ru", "hello,"), ("руддщю", "ru", "hello."), ("цщкдв!", "ru", "world!"),
             ("(ghbdtn)", "en", "(привет)"), ("(руддщ!", "ru", "(hello!"),
+            // Russian has no punctuation on the ж, х and ё keys, so a word
+            // switching into it keeps the letter; English keeps its `;`.
+            ("rfhjnf;", "en", "каротаж"), ("vtnhf;", "en", "метраж"), ("lbcnb[", "en", "дистих"),
+            ("cnfhm`", "en", "старьё"), ("руддщж", "ru", "hello;"),
         ] {
             suite.expect(rewritten(token, typedLanguage: language) == expected,
                          "\(token) becomes \(expected), got \(rewritten(token, typedLanguage: language) ?? "nothing")")
