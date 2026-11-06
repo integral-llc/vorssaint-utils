@@ -431,6 +431,8 @@ final class ScreenshotSelectionController {
             switch Int(event.keyCode) {
             case kVK_Escape:
                 self.finish(.cancelled)
+            case _ where self.offersRepeatLastRegion && Self.isRepeatRegionShortcut(event):
+                self.repeatLastRegion()
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 self.confirmSelectionWithKeyboard()
             case kVK_Space:
@@ -487,6 +489,12 @@ final class ScreenshotSelectionController {
 
     private static func isRepeatRegionKey(_ event: NSEvent) -> Bool {
         matchesShortcutKey(event, character: "r", physicalKeyCode: kVK_ANSI_R)
+    }
+
+    private static func isRepeatRegionShortcut(_ event: NSEvent) -> Bool {
+        ScreenshotRepeatRegionShortcut.matches(ScreenshotRepeatRegionShortcut.saved(),
+                                               keyCode: Int(event.keyCode),
+                                               modifiers: GlobalShortcutModifiers(eventFlags: event.modifierFlags))
     }
 
     private func toggleScrollingCapture() {
@@ -1949,7 +1957,8 @@ private struct CaptureGuideView: View {
                     CaptureKeyHint(key: "C", icon: "doc.on.doc")
                 }
                 if offersRepeatLastRegion {
-                    CaptureKeyHint(key: "R", icon: "rectangle.dashed")
+                    CaptureKeyHint(key: ScreenshotRepeatRegionShortcut.hint(
+                        for: ScreenshotRepeatRegionShortcut.saved()), icon: "rectangle.dashed")
                 }
                 CaptureKeyHint(key: "esc", icon: "xmark")
             }
@@ -2038,7 +2047,8 @@ private struct UnifiedCaptureGuideContent: View {
                     CaptureKeyHint(key: "C", icon: "doc.on.doc")
                 }
                 if offersRepeatLastRegion {
-                    CaptureKeyHint(key: "R", icon: "rectangle.dashed")
+                    CaptureKeyHint(key: ScreenshotRepeatRegionShortcut.hint(
+                        for: ScreenshotRepeatRegionShortcut.saved()), icon: "rectangle.dashed")
                 }
             }
         }

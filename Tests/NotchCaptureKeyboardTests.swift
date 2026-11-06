@@ -50,6 +50,18 @@ enum NotchCaptureKeyboardContract {
     }
 }
 
+extension GlobalShortcutModifiers {
+    /// The production helper converts real AppKit flags; this mirrors it for the contract's event double.
+    init(eventFlags: NotchCaptureKeyboardContract.NSEvent.ModifierFlags) {
+        var modifiers: GlobalShortcutModifiers = []
+        if eventFlags.contains(.control) { modifiers.insert(.control) }
+        if eventFlags.contains(.option) { modifiers.insert(.option) }
+        if eventFlags.contains(.shift) { modifiers.insert(.shift) }
+        if eventFlags.contains(.command) { modifiers.insert(.command) }
+        self = modifiers
+    }
+}
+
 enum NotchCaptureKeyboardTests {
     private typealias Contract = NotchCaptureKeyboardContract
     private typealias Event = Contract.NSEvent
@@ -212,6 +224,24 @@ enum NotchCaptureKeyboardTests {
                            "repeat follows the typed letter or physical key, but never command, control or option")
                 }
             }
+            for (key, flags, repeats) in [(kVK_Return, Event.ModifierFlags.command, true),
+                                          (kVK_ANSI_KeypadEnter, .command, true),
+                                          (kVK_Return, [.command, .shift], false),
+                                          (kVK_Return, .option, false)] {
+                selection.actions = []
+                let event = Event(window: destination, keyCode: UInt16(key), modifierFlags: flags)
+                let consumed = Event.handler?(event) == nil
+                suite.expect(!repeats || (consumed && selection.actions == ["repeat"]),
+                             "Command-Return captures the last outline from the overlay and the island")
+                suite.expect(repeats || selection.actions != ["repeat"],
+                             "the outline shortcut wants its exact modifiers")
+            }
+            selection.offersRepeatLastRegion = false
+            selection.actions = []
+            _ = Event.handler?(Event(window: destination, keyCode: UInt16(kVK_Return), modifierFlags: .command))
+            suite.expect(!selection.actions.contains("repeat"),
+                         "with no outline to repeat, Command-Return falls back to the ordinary confirm")
+            selection.offersRepeatLastRegion = true
         }
         selection.actions = []
         selection.screenCaptureOptions?.controlsInNotch = false

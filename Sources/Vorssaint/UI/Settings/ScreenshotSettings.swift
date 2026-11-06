@@ -144,6 +144,7 @@ struct ScreenshotCaptureSettings: View {
                 .pickerStyle(.segmented)
                 Toggle(strings.pointerToggle, isOn: $includePointer)
                 Toggle(strings.lastRegionToggle, isOn: $showLastRegion)
+                ScreenshotRepeatRegionShortcutRow()
                 Toggle(strings.highlightWindowsToggle, isOn: $highlightWindows)
                 Text(strings.highlightWindowsCaption)
                     .font(.caption)

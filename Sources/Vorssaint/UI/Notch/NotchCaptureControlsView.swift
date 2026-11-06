@@ -76,10 +76,11 @@ struct NotchCaptureControlsView: View {
         HStack(spacing: NotchCaptureControlsLayout.buttonSpacing) {
             if options.offersRepeatLastRegion {
                 // A narrow side of the camera keeps only the key.
+                let key = ScreenshotRepeatRegionShortcut.hint(for: ScreenshotRepeatRegionShortcut.saved())
                 ViewThatFits(in: .horizontal) {
-                    Label("R", systemImage: "rectangle.dashed")
+                    Label(key, systemImage: "rectangle.dashed")
                         .padding(.horizontal, 8)
-                    Text("R").frame(width: 28)
+                    Text(key).lineLimit(1).minimumScaleFactor(0.6).frame(width: 28)
                 }
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)

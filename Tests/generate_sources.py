@@ -1966,7 +1966,7 @@ def main():
           + "var keyMonitor: Any?\nvar globalKeyMonitor: Any?\nvar spaceIsDown = false\n"
           + "var acceptsWindowClick = true\nvar loupeAcceptsKeyboardActions = false\n"
           + "var actions: [String] = []\nvar draggingPanel: ScreenshotOverlayPanel?\n"
-          + "var isPickingColor = false\nvar acceptsCaptureInput = true\n"
+          + "var isPickingColor = false\nvar acceptsCaptureInput = true\nvar offersRepeatLastRegion = true\n"
           + "var panels: [ScreenshotOverlayPanel] = []\nvar currentPointerLocation: CGPoint?\n"
           + 'func finish(_ outcome: Outcome) { actions.append("cancel") }\n'
           + 'func captureFullDisplayUnderMouse() { actions.append("fullDisplay") }\n'
@@ -1981,6 +1981,7 @@ def main():
           + "func toggleScrollingCapture() {}\nfunc toggleLoupe() {}\nfunc copyLoupeColor() {}\n"
           + "func nudgePointer(keyCode: Int, fast: Bool) {}\nfunc attach() { installKeyMonitor() }\n"
           + declaration(selection, "    private static func isRepeatRegionKey(")
+          + declaration(selection, "    private static func isRepeatRegionShortcut(")
           + declaration(selection, "    private static func matchesShortcutKey(")
           + declaration(selection, "    private func confirmSelectionWithKeyboard()")
           + declaration(selection, "    private func installKeyMonitor()")

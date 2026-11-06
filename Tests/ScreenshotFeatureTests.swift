@@ -13,6 +13,37 @@ import SwiftUI
 import VMStatisticsCompat
 
 enum ScreenshotFeatureTests {
+    private static func repeatRegionShortcut(_ suite: TestSuite) {
+        typealias Repeat = ScreenshotRepeatRegionShortcut
+        let commandReturn = Repeat.defaultShortcut
+        suite.expect(Repeat.matches(commandReturn, keyCode: kVK_Return, modifiers: [.command])
+                     && Repeat.matches(commandReturn, keyCode: kVK_ANSI_KeypadEnter, modifiers: [.command]),
+                     "Command-Return and Command-Enter on the keypad both capture the last outline")
+        suite.expect(!Repeat.matches(commandReturn, keyCode: kVK_Return, modifiers: [])
+                     && !Repeat.matches(commandReturn, keyCode: kVK_Return, modifiers: [.command, .shift])
+                     && !Repeat.matches(commandReturn, keyCode: kVK_ANSI_R, modifiers: [.command]),
+                     "plain Return keeps confirming, and extra modifiers or other keys never repeat")
+        suite.expect(Repeat.hint(for: commandReturn) == "⌘↩"
+                     && Repeat.hint(for: GlobalShortcut(keyCode: Int64(kVK_ANSI_G), modifiers: [.control, .option])) == "⌃⌥G",
+                     "the guide shows a compact key cap that fits the island's narrow square")
+        let suiteName = "com.vorssaint.tests.screenshot-repeat-region.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        suite.expect(Repeat.saved(defaults) == commandReturn, "Command-Return is the default")
+        let custom = GlobalShortcut(keyCode: Int64(kVK_ANSI_G), modifiers: [.control, .option])
+        defaults.set(custom.storageValue, forKey: DefaultsKey.screenshotRepeatRegionShortcut)
+        suite.expect(Repeat.saved(defaults) == custom, "a recorded shortcut replaces the default")
+        for broken in ["", "nonsense", ":\(kVK_ANSI_G)", "command:999999"] {
+            defaults.set(broken, forKey: DefaultsKey.screenshotRepeatRegionShortcut)
+            suite.expect(Repeat.saved(defaults) == commandReturn,
+                         "an unusable or modifier-free stored value falls back to Command-Return")
+        }
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotRepeatRegionShortcut] as? String
+                     == commandReturn.storageValue
+                     && SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotRepeatRegionShortcut),
+                     "the outline shortcut is registered and travels with the settings backup")
+    }
+
     static func run(_ suite: TestSuite) {
         let registrationDomain = UserDefaults.standard.volatileDomain(
             forName: UserDefaults.registrationDomain)
@@ -1328,6 +1359,7 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.offersRepeatLastRegion(isPickingColor: true,
                                                          storedRegionDisplayIsAvailable: true),
                "the colour picker has no region to repeat, matching repeatLastRegion's own guard")
+        repeatRegionShortcut(suite)
         let captureSelectionSource = (try? String(
             contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotSelectionController.swift",
             encoding: .utf8)) ?? ""

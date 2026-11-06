@@ -1938,6 +1938,7 @@ enum Defaults {
         DefaultsKey.screenshotDefaultAction: "",
         DefaultsKey.screenshotIncludePointer: false,
         DefaultsKey.screenshotShowLastRegion: true,
+        DefaultsKey.screenshotRepeatRegionShortcut: ScreenshotRepeatRegionShortcut.defaultShortcut.storageValue,
         DefaultsKey.screenshotHighlightWindows: true,
         DefaultsKey.screenshotLoupeStartsOn: false,
         DefaultsKey.screenshotLoupeRememberZoom: false,

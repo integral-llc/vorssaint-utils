@@ -584,6 +584,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/QuickTools/QuickTogglesSupport.swift
         Sources/Vorssaint/Services/QuickTools/ScreenshotCapturePolicy.swift
         Sources/Vorssaint/Services/QuickTools/ScreenshotSupport.swift
+        Sources/Vorssaint/Services/QuickTools/ScreenshotRepeatRegionShortcut.swift
         Sources/Vorssaint/Services/QuickTools/ScreenshotCanvasSupport.swift
         Sources/Vorssaint/UI/Settings/ScreenCaptureToolPicker.swift
         Sources/Vorssaint/UI/Settings/MonitorToken.swift
@@ -611,6 +612,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutVocabulary.swift
         Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
         Sources/Vorssaint/Core/LayoutSwitcherExclusionStrings.swift
+        Sources/Vorssaint/Core/ScreenshotRepeatRegionStrings.swift
         Sources/Vorssaint/Services/YouTubeTranscriber/YouTubeTranscriberSupport.swift
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
         Sources/Vorssaint/Services/TVCast/TVCastSupport.swift
