@@ -359,6 +359,9 @@ enum WindowEnumerator {
         let treatHiddenAppsLikeMinimized = UserDefaults.standard.bool(
             forKey: DefaultsKey.switcherTreatHiddenAppsLikeMinimized)
         let showFullscreenWindows = UserDefaults.standard.object(forKey: DefaultsKey.switcherShowFullscreenWindows) as? Bool ?? true
+        // Off keeps current-desktop mode strict: a fullscreen app shows only on its own Space.
+        let fullscreenFromOtherDesktops = UserDefaults.standard.object(
+            forKey: DefaultsKey.switcherFullscreenFromOtherDesktops) as? Bool ?? true
         let result = listWindows(filterPID: nil,
                                  maximumCount: maximumCount,
                                  windowlessApps: windowlessApps,
@@ -369,7 +372,8 @@ enum WindowEnumerator {
                                  showFullscreenWindows: showFullscreenWindows,
                                  preservingGroupedWindows: preservingGroupedWindows,
                                  currentSpaceOnly: currentSpaceOnly,
-                                 includesFullscreenAcrossSpaces: includesFullscreenAcrossSpaces && showFullscreenWindows,
+                                 includesFullscreenAcrossSpaces: includesFullscreenAcrossSpaces && showFullscreenWindows
+                                     && fullscreenFromOtherDesktops,
                                  marksHiddenSpaces: marksHiddenSpaces,
                                  snapshot: snapshot,
                                  windowsOnly: windowsOnly,

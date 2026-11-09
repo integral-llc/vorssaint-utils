@@ -617,6 +617,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
         Sources/Vorssaint/Core/LayoutSwitcherExclusionStrings.swift
         Sources/Vorssaint/Core/ScreenshotRepeatRegionStrings.swift
+        Sources/Vorssaint/Core/SwitcherFullscreenScopeStrings.swift
         Sources/Vorssaint/Services/YouTubeTranscriber/YouTubeTranscriberSupport.swift
         Sources/Vorssaint/Core/YouTubeTranscriberStrings.swift
         Sources/Vorssaint/Services/TVCast/TVCastSupport.swift

@@ -261,11 +261,13 @@ enum SwitcherFullscreenScopeTests {
 
         func enumerate(currentSpaceOnly: Bool, showFullscreen: Bool = true, groupByApp: Bool = false,
                        appRules: [String: SwitcherAppRule] = [:],
-                       windowlessApps: String = "off") -> Enumerator.WindowList {
+                       windowlessApps: String = "off",
+                       fullscreenFromOtherDesktops: Bool? = nil) -> Enumerator.WindowList {
             Preferences.standard.values = [DefaultsKey.switcherCurrentSpaceOnly: currentSpaceOnly,
                                             DefaultsKey.switcherShowFullscreenWindows: showFullscreen,
                                             DefaultsKey.switcherWindowlessApps: windowlessApps,
                                             DefaultsKey.switcherAppRules: SwitcherAppRule.storedValue(appRules)]
+            Preferences.standard.values[DefaultsKey.switcherFullscreenFromOtherDesktops] = fullscreenFromOtherDesktops
             return Enumerator.enumerateSwitcherWindows(groupByApp: groupByApp,
                                                         preservingGroupedWindows: false, snapshot: snapshot)
         }
@@ -280,6 +282,16 @@ enum SwitcherFullscreenScopeTests {
                      "a screen-sized ordinary window on another desktop does not bypass desktop scope")
         suite.expect(enumerate(currentSpaceOnly: true, showFullscreen: false).items.compactMap(\.windowID) == [1],
                      "hiding fullscreen windows retains the current-desktop ordinary window")
+        suite.expect(enumerate(currentSpaceOnly: true, fullscreenFromOtherDesktops: false)
+                        .items.compactMap(\.windowID) == [1],
+                     "strict current-desktop mode leaves fullscreen windows on their own Space")
+        suite.expect(Set(enumerate(currentSpaceOnly: true, fullscreenFromOtherDesktops: true)
+                            .items.compactMap(\.windowID)) == [1, 3, 4, 6]
+                        && Defaults.registeredDefaults[DefaultsKey.switcherFullscreenFromOtherDesktops] as? Bool == true,
+                     "fullscreen windows from other desktops stay listed by default, as upstream has it")
+        suite.expect(Set(enumerate(currentSpaceOnly: false, fullscreenFromOtherDesktops: false)
+                            .items.compactMap(\.windowID)) == [1, 2, 3, 4, 5, 6],
+                     "the strict choice only narrows current-desktop mode")
         let hiddenApps = enumerate(currentSpaceOnly: true, appRules: ["test.app.3": .hidden, "test.app.4": .hidden])
         suite.expect(Set(hiddenApps.items.compactMap(\.windowID)) == [1, 6],
                      "fullscreen scope does not override app exclusions in either enumeration pass")

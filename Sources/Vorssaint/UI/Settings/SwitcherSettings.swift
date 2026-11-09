@@ -297,6 +297,9 @@ struct SwitcherSettings: View {
                         caption: l10n.s.switcherCurrentSpaceOnlyCaption) {
                 Toggle(l10n.s.switcherCurrentSpaceOnly, isOn: $switcherCurrentSpaceOnly).labelsHidden()
             }
+            if switcherCurrentSpaceOnly && switcherShowFullscreenWindows {
+                SwitcherFullscreenScopeRow()
+            }
             Divider()
             chipRow(symbol: "app.dashed", title: l10n.s.switcherWindowlessApps,
                     caption: l10n.s.switcherWindowlessAppsCaption,

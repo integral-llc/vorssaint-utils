@@ -115,6 +115,7 @@ enum DefaultsKey {
     static let switcherMinimizedPlacement = "switcherMinimizedPlacement"
     static let switcherTreatHiddenAppsLikeMinimized = "switcherTreatHiddenAppsLikeMinimized"
     static let switcherShowFullscreenWindows = "switcherShowFullscreenWindows"
+    static let switcherFullscreenFromOtherDesktops = "switcherFullscreenFromOtherDesktops"
     static let switcherAppRules = "switcherAppRules" // [bundle id: SwitcherAppRule raw value]
     static let switcherCurrentSpaceOnly = "switcherCurrentSpaceOnly" // list only windows on the desktop the user is in (issue #337)
     static let switcherSearchPinEnabled = "switcherSearchPinEnabled" // S pins the search field open, off by default so existing users typing S as a search letter see no change
@@ -1310,6 +1311,7 @@ enum Defaults {
         DefaultsKey.switcherMinimizedPlacement: WindowSwitchMinimizedPlacement.normal.rawValue,
         DefaultsKey.switcherTreatHiddenAppsLikeMinimized: true,
         DefaultsKey.switcherShowFullscreenWindows: true,
+        DefaultsKey.switcherFullscreenFromOtherDesktops: true,
         DefaultsKey.switcherAppRules: [String: String](),
         DefaultsKey.switcherCurrentSpaceOnly: false,
         DefaultsKey.switcherSearchPinEnabled: false,
