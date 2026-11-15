@@ -41,6 +41,7 @@ struct MetricsTests {
                 ScrollHorizontalModifierTests.run(suite)
                 ScrollZoomFocusTests.run(suite)
             }),
+            ("scroll-speed", { ScrollSpeedTests.run(suite) }),
             ("linear-scroll", { LinearScrollTapTests.run(suite) }),
             ("preferences", { PreferencesFeatureTests.run(suite) }),
             ("app-management", {
@@ -110,11 +111,13 @@ struct MetricsTests {
             }),
             ("recorder", {
                 RecorderGIFWriterTests.run(suite)
+                RecorderFastGIFWriterTests.run(suite)
                 RecorderFeatureTests.run(suite)
                 RecorderZoomAimingTests.run(suite)
                 RecorderExportSpeedTests.run(suite)
                 RecorderExportControlsTests.run(suite)
                 RecorderExportRenderingTests.run(suite)
+                RecorderFastGIFExportTests.run(suite)
             }),
             ("command-bar", {
                 CommandBarFeatureTests.run(suite)
@@ -148,6 +151,7 @@ struct MetricsTests {
             }),
             ("settings", {
                 SettingsFeatureTests.run(suite)
+                SettingsSearchCoverageTests.run(suite)
                 RadialFilePickerTests.run(suite)
                 SettingsWindowTests.run { suite.expect($0, $1) }
                 NotchSettingsChoiceTests.run(suite)
@@ -159,8 +163,15 @@ struct MetricsTests {
                 BrightnessStepTests.run(suite)
                 BrightnessKeyRoutingTests.run(suite)
             }),
+            ("speaker-volume", {
+                DisplaySpeakerVolumeTests.run(suite)
+                MonitorVolumeKeySettingsTests.run(suite)
+            }),
             ("software-dimming", { SoftwareDimmingRouteTests.run { suite.expect($0, $1) } }),
-            ("capture", { ScreenshotSelectionRefreshContract.run(suite) }),
+            ("capture", {
+                ScreenshotSelectionRefreshContract.run(suite)
+                ScreenshotCountdownTests.run(suite)
+            }),
             ("keyboard", {
                 KeyboardFeatureTests.run(suite)
                 AssistiveKeyboardTests.run(suite)
@@ -205,7 +216,9 @@ struct MetricsTests {
             }),
             ("uninstaller", {
                 HomebrewOwnershipTests.run(suite)
+                HomebrewOperationLogRetentionTests.run(suite)
                 UninstallerFlowTests.run(suite)
+                UninstallerTrashTests.run(suite)
                 UninstallerBulkSelectionTests.run(suite)
                 MixedStateCheckboxTests.run(suite)
                 UninstallerCommandBarCleanupTests.run(suite)
