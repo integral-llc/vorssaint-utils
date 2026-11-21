@@ -489,6 +489,7 @@ struct NotchView: View {
         return contentOverflows || service.selectedMetric != nil
             || (service.selected == .captures && service.captureContent != nil)
             || (service.selected == .tools && launcher.isEditing && launcher.activeUtility == nil)
+            || service.selected == .qcControl
     }
 
     private var headerFeedback: NotchNotice? {
@@ -583,6 +584,7 @@ struct NotchView: View {
             case .agents: NotchAgentsView(size: pageSize)
             case .watch: NotchWatchView(size: pageSize)
             case .tvCast: NotchTVCastView()
+            case .qcControl: QCControlView()
             }
         }
     }
@@ -824,6 +826,7 @@ extension NotchModule: PanelOrderItem {
         case .agents: return FeatureStrings.notchAgents(language).title
         case .watch: return FeatureStrings.notchWatch(language).title
         case .tvCast: return FeatureStrings.tvCast(language).pageTitle
+        case .qcControl: return QCControlStrings.title
         }
     }
 }

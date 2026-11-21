@@ -351,6 +351,10 @@ if (( TEST )); then
         Sources/Vorssaint/UI/Notch/NotchIslandAlert.swift
         Sources/Vorssaint/Services/Notch/NotchAccessorySupport.swift
         Sources/Vorssaint/Services/Notch/NotchAccessoryConnectionMonitor.swift
+        Sources/Vorssaint/Services/Bluetooth/BluetoothRunLoop.swift
+        Sources/Vorssaint/Services/Bluetooth/BoseHeadphoneProtocol.swift
+        Sources/Vorssaint/Services/Bluetooth/BoseHeadphoneTransport.swift
+        Sources/Vorssaint/Core/QCControlStrings.swift
         Sources/Vorssaint/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vorssaint/Core/NotchMusicExtrasStrings.swift
         Sources/Vorssaint/Core/NotchClipboardSizeStrings.swift

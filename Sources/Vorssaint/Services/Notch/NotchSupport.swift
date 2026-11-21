@@ -7,7 +7,7 @@ import Foundation
 import CoreGraphics
 
 enum NotchModule: String, CaseIterable, Identifiable {
-    case controls, mixer, music, clipboard, captures, files, system, tools, calendar, notifications, timer, camera, downloads, scratchpad, agents, watch, tvCast
+    case controls, mixer, music, clipboard, captures, files, system, tools, calendar, notifications, timer, camera, downloads, scratchpad, agents, watch, tvCast, qcControl
     var id: String { rawValue }
 
     var symbol: String {
@@ -32,6 +32,7 @@ enum NotchModule: String, CaseIterable, Identifiable {
         case .agents: return "sparkles"
         case .watch: return "eye"
         case .tvCast: return "tv"
+        case .qcControl: return AppFeature.qcControl.symbolName
         }
     }
 
@@ -55,6 +56,7 @@ enum NotchModule: String, CaseIterable, Identifiable {
         case .agents: return "g"
         case .watch: return "o"
         case .tvCast: return "y"
+        case .qcControl: return "q"
         }
     }
 
@@ -79,6 +81,7 @@ enum NotchModule: String, CaseIterable, Identifiable {
         case .agents: return AppFeature.notchAgents.isAvailable(in: defaults)
         case .watch: return AppFeature.notchWatch.isAvailable(in: defaults)
         case .tvCast: return AppFeature.tvCast.isAvailable(in: defaults)
+        case .qcControl: return AppFeature.qcControl.isAvailable(in: defaults)
         case .system:
             return [.monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork,
                     .monitorDisk, .monitorPower, .fanControl, .connectedDevices].contains { (feature: AppFeature) in
@@ -321,6 +324,7 @@ enum NotchLayout {
     static let clipboardCompactCardHeight: CGFloat = 52
     static let clipboardCardSpacing: CGFloat = 8
     static let emptyHeight: CGFloat = 140
+    static let qcControlPageHeight: CGFloat = 200
     /// The player as a phone's island lays it out: a small cover, the song
     /// beside it, the timeline and one row of buttons across the island,
     /// which is no wider than that: about 380 points between its sides.
@@ -2847,6 +2851,8 @@ struct NotchGeometry: Equatable {
                 contentHeight = min(budget, agentsHeight.map { $0 > 0 ? $0 : NotchLayout.emptyHeight } ?? budget)
             case .tvCast:
                 contentHeight = min(budget, NotchLayout.tvCastPageHeight)
+            case .qcControl:
+                contentHeight = min(budget, NotchLayout.qcControlPageHeight)
             // Lists and previews fill the chosen content budget.
             case .mixer, .calendar, .clipboard, .captures, .files, .notifications, .downloads, .camera, .scratchpad, .watch:
                 contentHeight = budget

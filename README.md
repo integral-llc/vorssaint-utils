@@ -90,6 +90,7 @@ Reorder or hide panel sections, choose a compact layout, and export settings to 
 - **Volume mixer.** Set volume per app, boost quiet audio past 100%, and pin or reorder favorites. No audio driver required.
 - **Per app output.** Play music through speakers while a call uses your headset.
 - **Output switcher.** Switch audio outputs with a shortcut and lower the volume when headphones disconnect.
+- **QC Control.** Check the battery, switch listening modes and adjust noise cancellation on Bose QuietComfort Ultra headphones. Install QC Control in Settings → Features → Sound, then open it from Dynamic Island or the headphones tab in the menu panel.
 - **Microphone tools.** Choose a preferred input, adjust its level on supported devices, and apply available microphone mute or input-volume controls with one shortcut. Siri and some apps may still hear you; Mic Mute is not a privacy lock. Its indicator shows that the feature is on, not that every app receives silence.
 - **Music app blocker.** Prevent unwanted Music launches after detected playback-button presses. Requires Accessibility.
 

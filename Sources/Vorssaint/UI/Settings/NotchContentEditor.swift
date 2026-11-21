@@ -179,6 +179,8 @@ struct NotchPagePreview: View {
         // The live area belongs to the island; the preview explains it instead.
         case .watch: NotchWatchView(size: size)
         case .tvCast: NotchTVCastView()
+        case .qcControl:
+            NotchEmptyView(symbol: module.symbol, message: FeatureStrings.qcControl(l10n.language).description)
         }
     }
 
@@ -408,6 +410,7 @@ extension NotchModule {
         case .agents: return Color(red: 0.85, green: 0.47, blue: 0.34)
         case .watch: return .purple
         case .tvCast: return .red
+        case .qcControl: return .indigo
         }
     }
 

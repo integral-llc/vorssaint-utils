@@ -12,7 +12,7 @@ You can review or change every grant in System Settings, under Privacy and Secur
 | Microphone | Yes | Your voice in a screen recording, only when you turn it on |
 | Camera | Yes | The camera preview mirror, floating or inside the notch |
 | Calendars | Yes | Upcoming appointments in the notch |
-| Bluetooth | Yes | Accessory battery levels in Monitor, optional accessory alerts in the notch and Bluetooth on sleep |
+| Bluetooth | Yes | Accessory battery levels in Monitor, optional accessory alerts in the notch, Bluetooth on sleep and QC Control |
 | Files and Folders | Yes | Monitoring downloads in a folder you choose |
 | Notifications | Yes | Keep awake, battery, Monitor and update alerts |
 | Full Disk Access | Yes | A deeper uninstaller scan and the optional cleanup offer for apps moved to the Trash |
@@ -104,10 +104,11 @@ The optional notch calendar asks for access when you press its permission button
 - **Monitor**, for the battery level of keyboards, mice, headphones and other accessories. It is read only while the battery details are open or while you show it in the menu bar or in the Power card. Both stay off until you turn them on.
 - **Notch**, for the optional accessory alerts when an accessory connects or runs low.
 - **Bluetooth on sleep**, which checks and switches Bluetooth around sleep while you have it turned on.
+- **QC Control**, which asks when you choose Find Headphones. It reads the battery and listening modes from a paired Bose QuietComfort Ultra headset and sends control changes directly to it. The control connection closes when you leave the QC Control page or panel.
 
-**If you say no.** Accessories that report their battery to macOS directly, as many keyboards, mice and trackpads do, still show it. Others can be missing from the list and from accessory alerts. Bluetooth on sleep may be unable to switch Bluetooth off and back on.
+**If you say no.** Accessories that report their battery to macOS directly, as many keyboards, mice and trackpads do, still show it. Others can be missing from the list and from accessory alerts. Bluetooth on sleep may be unable to switch Bluetooth off and back on. QC Control needs access to connect.
 
-**Optional.** Yes. Battery levels and the Bluetooth state are read on your Mac and never leave it.
+**Optional.** Yes. These features use local Bluetooth and send no data over the internet.
 
 ## Files and Folders
 

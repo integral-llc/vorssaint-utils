@@ -410,10 +410,9 @@ struct NotchSettings: View {
         module.isAvailable() && moduleBinding(module).wrappedValue
     }
 
-    /// The mixer, the system page and the tools arrange themselves in the
-    /// island; Cast to TV keeps its TVs on its own page.
+    /// These pages keep their controls on the island or in the feature's own settings.
     private func hasOptions(_ module: NotchModule) -> Bool {
-        ![.mixer, .system, .tools, .tvCast].contains(module)
+        ![.mixer, .system, .tools, .tvCast, .qcControl].contains(module)
     }
 
     @ViewBuilder private func moduleOptions(_ module: NotchModule) -> some View {
@@ -561,7 +560,7 @@ struct NotchSettings: View {
         case .watch:
             NotchWatchSettingsControls()
                 .toggleStyle(TrailingSwitchToggleStyle())
-        case .mixer, .system, .tools, .tvCast:
+        case .mixer, .system, .tools, .tvCast, .qcControl:
             EmptyView()
         }
     }
@@ -902,6 +901,7 @@ struct NotchSettings: View {
         case .agents: return .notchAgents
         case .watch: return .notchWatch
         case .tvCast: return .tvCast
+        case .qcControl: return .qcControl
         }
     }
 

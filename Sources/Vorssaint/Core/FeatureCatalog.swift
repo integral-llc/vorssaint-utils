@@ -22,7 +22,7 @@ enum AppFeature: String, CaseIterable {
     case clipboardHistory, pastePlain, finderCutPaste, finderRename, shelf, urlCleaner,
          diskImageInstaller
     // Sound
-    case mixer, soundOutputSwitcher, audioPriority, micMute, musicBlock
+    case mixer, soundOutputSwitcher, audioPriority, micMute, musicBlock, qcControl
     // Energy and display
     case keepAwake, brightness, extraBrightness, bluetoothSleep
     // Tools
@@ -85,7 +85,7 @@ extension AppFeature {
         // Watch asks when an area is chosen and checks on every reading. The
         // companion uses no permission at all.
         case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder, .wallpaper, .notchWatch,
-             .notchMascot, .youtubeTranscriber, .tvCast:
+             .notchMascot, .youtubeTranscriber, .tvCast, .qcControl:
             return false
         default:
             return true
@@ -111,7 +111,7 @@ extension AppFeature {
         case .clipboardHistory, .pastePlain, .finderCutPaste, .finderRename, .shelf, .urlCleaner,
              .diskImageInstaller:
             return .clipboardFiles
-        case .mixer, .soundOutputSwitcher, .audioPriority, .micMute, .musicBlock:
+        case .mixer, .soundOutputSwitcher, .audioPriority, .micMute, .musicBlock, .qcControl:
             return .sound
         case .keepAwake, .brightness, .extraBrightness, .bluetoothSleep:
             return .energyDisplay
@@ -170,6 +170,7 @@ extension AppFeature {
         case .mixer: return "speaker.wave.2"
         case .soundOutputSwitcher: return "hifispeaker"
         case .audioPriority: return "list.number"
+        case .qcControl: return "headphones"
         case .micMute: return "mic.slash"
         case .musicBlock: return "music.note"
         case .keepAwake: return "moon.zzz.fill"
@@ -298,7 +299,7 @@ extension AppFeature {
         case .brightness: return [DefaultsKey.brightnessControlEnabled]
         case .extraBrightness: return [DefaultsKey.extraBrightnessEnabled]
         case .bluetoothSleep: return [DefaultsKey.bluetoothSleepEnabled]
-        case .windowLayout, .diskImageInstaller, .mixer, .micMute, .keepAwake,
+        case .windowLayout, .diskImageInstaller, .mixer, .micMute, .keepAwake, .qcControl,
              .quickLauncher, .quickToggles, .quitApps, .colorPicker, .screenOCR, .cleaningMode, .mediaTools,
              .cleaner, .uninstaller, .homebrew, .appUpdates, .screenshot, .cameraPreview, .scratchpad,
              .commandBar, .screenRecorder, .wallpaper, .killProcess, .youtubeTranscriber, .tvCast, .portManager,
@@ -400,7 +401,8 @@ extension AppFeature {
         case .mixer: return [.audioCapture, .accessibility]
         case .musicBlock: return [.accessibility]
         case .monitorCPU, .monitorMemory, .monitorDisk, .monitorPower: return [.notifications]
-        case .clipboardHistory, .shelf, .urlCleaner,
+        // QC Control asks for Bluetooth access from its panel.
+        case .clipboardHistory, .shelf, .urlCleaner, .qcControl,
              .soundOutputSwitcher, .audioPriority,
              .extraBrightness, .bluetoothSleep, .quickLauncher, .colorPicker, .micMute, .mediaTools,
              .scratchpad, .wallpaper, .monitorGPU, .monitorNetwork, .connectedDevices, .fanControl, .killProcess,
@@ -506,7 +508,7 @@ extension AppFeature {
             return true
         case .focusFollowsMouse, .scrollHorizontal, .scrollZoom, .linearScroll, .scrollSpeed, .diskImageInstaller, .audioPriority,
              .wallpaper, .killProcess, .portManager, .fanControl, .notchMascot, .spacesOrder, .quitApps,
-             .layoutSwitcher, .youtubeTranscriber, .tvCast:
+             .layoutSwitcher, .youtubeTranscriber, .tvCast, .qcControl:
             return false
         }
     }
