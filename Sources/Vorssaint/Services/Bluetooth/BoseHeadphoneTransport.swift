@@ -18,8 +18,8 @@ struct BoseHeadphoneDevice: Identifiable {
     }
 }
 
-/// IOBluetooth does not promise to retain the target of an async SDP query,
-/// so an owner keeps itself alive here until every query it started calls back.
+/// IOBluetooth does not promise to retain the target of an async query or
+/// connection, so an owner keeps itself alive here until each one calls back.
 struct BluetoothQueryLease {
     private var pending: [String: Int] = [:]
     private var owner: AnyObject?
@@ -41,7 +41,7 @@ struct BluetoothQueryLease {
 /// Owns just the control channel. Closing it leaves system pairing and audio alone.
 final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     private struct Opening {
-        enum Stage { case services, serial }
+        enum Stage { case services, baseband, serial }
         let device: IOBluetoothDevice
         let completion: CheckedContinuation<Void, Error>
         var stage: Stage = .services
@@ -91,37 +91,67 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         // Every query and channel open below would page a headset that is not
         // connected, pulling it away from the phone or computer it is in use with.
         guard channel == nil, opening == nil, let device = IOBluetoothDevice(addressString: address),
-              device.isConnected() else {
+              BluetoothAudioRoutes.isConnected(device, routes: BluetoothAudioRoutes.connectedAddresses()) else {
             completion.resume(throwing: BoseHeadphoneError.disconnected)
             return
         }
         opening = Opening(device: device, completion: completion)
         // macOS can show the headset connected for audio while its Classic
-        // control connection still needs a service refresh.
+        // control connection still needs a service refresh and explicit open.
         if let id = device.addressString, device.performSDPQuery(self) == kIOReturnSuccess {
-            queries.begin(id, owner: self)
-            armTimeout(seconds: 1.5) { $0.openRefreshedChannel() }
+            queries.begin(Self.queryKey(id), owner: self)
+            armTimeout(seconds: 1.5) { $0.openBaseband() }
         } else {
-            openRefreshedChannel()
+            openBaseband()
         }
     }
 
     @objc func sdpQueryComplete(_ device: IOBluetoothDevice, status: IOReturn) {
         Self.worker.perform {
-            if let id = device.addressString { self.queries.complete(id) }
+            if let id = device.addressString { self.queries.complete(Self.queryKey(id)) }
             guard self.opening?.device === device else { return }
-            self.openRefreshedChannel()
+            self.openBaseband()
         }
     }
 
-    private func openRefreshedChannel() {
+    private func openBaseband() {
         guard let opening, opening.stage == .services else { return }
-        guard opening.device.isConnected() else {
+        if opening.device.isConnected() {
+            openSerialChannel(on: opening.device)
+            return
+        }
+        // IOBluetooth missed the audio link. Opening attaches to that link,
+        // and runs only when CoreAudio still routes through the headset.
+        guard let id = opening.device.addressString,
+              BluetoothAudioRoutes.connectedAddresses().contains(id.lowercased()) else {
             close(with: .disconnected)
             return
         }
-        openSerialChannel(on: opening.device)
+        self.opening?.stage = .baseband
+        if opening.device.openConnection(self) == kIOReturnSuccess {
+            queries.begin(Self.connectionKey(id), owner: self)
+            armTimeout(seconds: 5)
+        } else if opening.device.isConnected() {
+            openSerialChannel(on: opening.device)
+        } else {
+            close(with: .disconnected)
+        }
     }
+
+    @objc func connectionComplete(_ device: IOBluetoothDevice, status: IOReturn) {
+        Self.worker.perform {
+            if let id = device.addressString { self.queries.complete(Self.connectionKey(id)) }
+            guard let opening = self.opening, opening.device === device, opening.stage == .baseband else { return }
+            guard status == kIOReturnSuccess || device.isConnected() else {
+                self.close(with: .disconnected)
+                return
+            }
+            self.openSerialChannel(on: device)
+        }
+    }
+
+    private static func queryKey(_ id: String) -> String { "query \(id)" }
+    private static func connectionKey(_ id: String) -> String { "connection \(id)" }
 
     private func openSerialChannel(on device: IOBluetoothDevice) {
         opening?.stage = .serial
@@ -239,11 +269,12 @@ private final class BoseHeadphoneDiscovery: NSObject {
 
     func start() {
         let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []
+        let routes = BluetoothAudioRoutes.connectedAddresses()
         var seen = Set<String>()
         for device in paired {
             // A headset that is paired but in use elsewhere stays off the list,
             // so a single match never gets connected out from under its owner.
-            guard device.isConnected(), let id = device.addressString, seen.insert(id).inserted else { continue }
+            guard BluetoothAudioRoutes.isConnected(device, routes: routes), let id = device.addressString, seen.insert(id).inserted else { continue }
             if readIdentity(device, id: id) { continue }
             // A fresh audio connection may not have a Device ID cached yet.
             guard Self.isHeadset(device), device.performSDPQuery(self) == kIOReturnSuccess else { continue }

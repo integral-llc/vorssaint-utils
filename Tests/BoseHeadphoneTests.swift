@@ -35,6 +35,12 @@ enum BoseHeadphoneTests {
                      "the opt-in sound module retains its panel visibility in settings backups")
         checkIslandSection(suite)
         checkQueryLease(suite)
+        suite.expect(BluetoothAudioRoutes.address(fromUID: "BC-87-FA-97-BD-3C:output") == "bc-87-fa-97-bd-3c"
+                     && BluetoothAudioRoutes.address(fromUID: "BC-87-FA-97-BD-3C:input") == "bc-87-fa-97-bd-3c",
+                     "a Bluetooth audio route maps to the IOBluetooth address of its headset")
+        suite.expect(["BuiltInSpeakerDevice", "1E6D5077-0000-0000-0720-0104B5462878", "BC-87-FA-97-BD:output",
+                      "BC-87-FA-97-BD-3G:output", ""].allSatisfy { BluetoothAudioRoutes.address(fromUID: $0) == nil },
+                     "routes that do not name a Bluetooth address never count as a connected headset")
 
         let finished = DispatchSemaphore(value: 0)
         Task.detached {
