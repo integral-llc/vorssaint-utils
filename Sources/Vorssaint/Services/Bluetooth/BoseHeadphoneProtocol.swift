@@ -84,6 +84,8 @@ struct BoseHeadphoneMode: Identifiable, Equatable {
     }
 
     var id: UInt8 { configuration[0] }
+    /// The factory mode this one is based on; renaming a mode keeps it.
+    var preset: UInt8 { configuration[2] }
     private var editable: Bool { configuration[3] != 0 }
     private var configured: Bool { configuration[4] != 0 }
     var isSelectable: Bool { !editable || configured }

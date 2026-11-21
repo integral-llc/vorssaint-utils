@@ -17,8 +17,6 @@ struct QCControlStrings {
     let noCustomMode: String
     let noiseCancellation: String
     let listeningMode: String
-    let apply: String
-    let refresh: String
 }
 
 extension FeatureStrings {
@@ -57,9 +55,7 @@ private extension QCControlStrings {
         controlFailed: "Could not confirm the headphone settings. Reconnect and check the current mode.",
         noCustomMode: "Free a custom listening mode in the Bose app to adjust this level.",
         noiseCancellation: "Noise cancellation",
-        listeningMode: "Listening mode",
-        apply: "Apply",
-        refresh: "Refresh"
+        listeningMode: "Listening mode"
     )
 
     static let ptBR = QCControlStrings(
@@ -75,9 +71,7 @@ private extension QCControlStrings {
         controlFailed: "Não foi possível confirmar os ajustes dos fones. Reconecte e verifique o modo atual.",
         noCustomMode: "Libere um modo de áudio personalizado no app Bose para ajustar este nível.",
         noiseCancellation: "Cancelamento de ruído",
-        listeningMode: "Modo de áudio",
-        apply: "Aplicar",
-        refresh: "Atualizar"
+        listeningMode: "Modo de áudio"
     )
 
     static let tr = QCControlStrings(
@@ -93,9 +87,7 @@ private extension QCControlStrings {
         controlFailed: "Kulaklık ayarları doğrulanamadı. Yeniden bağlanıp geçerli modu kontrol edin.",
         noCustomMode: "Bu düzeyi ayarlamak için Bose uygulamasında bir özel dinleme modu yuvasını boşaltın.",
         noiseCancellation: "Gürültü engelleme",
-        listeningMode: "Dinleme modu",
-        apply: "Uygula",
-        refresh: "Yenile"
+        listeningMode: "Dinleme modu"
     )
 
     static let ru = QCControlStrings(
@@ -111,9 +103,7 @@ private extension QCControlStrings {
         controlFailed: "Не удалось подтвердить настройки наушников. Подключитесь снова и проверьте текущий режим.",
         noCustomMode: "Чтобы изменить уровень, освободите место для пользовательского режима в приложении Bose.",
         noiseCancellation: "Шумоподавление",
-        listeningMode: "Режим прослушивания",
-        apply: "Применить",
-        refresh: "Обновить"
+        listeningMode: "Режим прослушивания"
     )
 
     static let es = QCControlStrings(
@@ -129,9 +119,7 @@ private extension QCControlStrings {
         controlFailed: "No se pudieron confirmar los ajustes de los auriculares. Vuelve a conectarlos y comprueba el modo actual.",
         noCustomMode: "Libera un modo de escucha personalizado en la app de Bose para ajustar este nivel.",
         noiseCancellation: "Cancelación de ruido",
-        listeningMode: "Modo de escucha",
-        apply: "Aplicar",
-        refresh: "Actualizar"
+        listeningMode: "Modo de escucha"
     )
 
     static let sk = QCControlStrings(
@@ -147,9 +135,7 @@ private extension QCControlStrings {
         controlFailed: "Nastavenia slúchadiel sa nepodarilo potvrdiť. Znova ich pripojte a skontrolujte aktuálny režim.",
         noCustomMode: "Ak chcete upraviť túto úroveň, uvoľnite vlastný režim počúvania v aplikácii Bose.",
         noiseCancellation: "Potlačenie hluku",
-        listeningMode: "Režim počúvania",
-        apply: "Použiť",
-        refresh: "Obnoviť"
+        listeningMode: "Režim počúvania"
     )
 
     static let de = QCControlStrings(
@@ -165,9 +151,7 @@ private extension QCControlStrings {
         controlFailed: "Die Kopfhörereinstellungen konnten nicht bestätigt werden. Verbinde die Kopfhörer erneut und prüfe den aktuellen Modus.",
         noCustomMode: "Gib in der Bose-App einen benutzerdefinierten Hörmodus frei, um diese Stufe anzupassen.",
         noiseCancellation: "Geräuschunterdrückung",
-        listeningMode: "Hörmodus",
-        apply: "Anwenden",
-        refresh: "Aktualisieren"
+        listeningMode: "Hörmodus"
     )
 
     static let fr = QCControlStrings(
@@ -183,9 +167,7 @@ private extension QCControlStrings {
         controlFailed: "Impossible de confirmer les réglages du casque. Reconnectez-le et vérifiez le mode actuel.",
         noCustomMode: "Libérez un mode d’écoute personnalisé dans l’app Bose pour ajuster ce niveau.",
         noiseCancellation: "Réduction du bruit",
-        listeningMode: "Mode d’écoute",
-        apply: "Appliquer",
-        refresh: "Actualiser"
+        listeningMode: "Mode d’écoute"
     )
 
     static let it = QCControlStrings(
@@ -201,9 +183,7 @@ private extension QCControlStrings {
         controlFailed: "Impossibile confermare le impostazioni delle cuffie. Ricollegale e controlla la modalità attuale.",
         noCustomMode: "Libera una modalità di ascolto personalizzata nell’app Bose per regolare questo livello.",
         noiseCancellation: "Cancellazione del rumore",
-        listeningMode: "Modalità di ascolto",
-        apply: "Applica",
-        refresh: "Aggiorna"
+        listeningMode: "Modalità di ascolto"
     )
 
     static let ja = QCControlStrings(
@@ -219,9 +199,7 @@ private extension QCControlStrings {
         controlFailed: "ヘッドホンの設定を確認できませんでした。再接続して現在のモードを確認してください。",
         noCustomMode: "レベルを調整するには、Boseアプリでカスタムリスニングモードの空き枠を作ってください。",
         noiseCancellation: "ノイズキャンセリング",
-        listeningMode: "リスニングモード",
-        apply: "適用",
-        refresh: "更新"
+        listeningMode: "リスニングモード"
     )
 
     static let ko = QCControlStrings(
@@ -237,9 +215,7 @@ private extension QCControlStrings {
         controlFailed: "헤드폰 설정을 확인하지 못했습니다. 다시 연결하고 현재 모드를 확인하세요.",
         noCustomMode: "이 레벨을 조절하려면 Bose 앱에서 사용자 설정 청취 모드 슬롯을 비우세요.",
         noiseCancellation: "노이즈 캔슬링",
-        listeningMode: "청취 모드",
-        apply: "적용",
-        refresh: "새로 고침"
+        listeningMode: "청취 모드"
     )
 
     static let uk = QCControlStrings(
@@ -255,9 +231,7 @@ private extension QCControlStrings {
         controlFailed: "Не вдалося підтвердити параметри навушників. Під’єднайте їх знову й перевірте поточний режим.",
         noCustomMode: "Звільніть місце для власного режиму прослуховування в застосунку Bose, щоб налаштувати цей рівень.",
         noiseCancellation: "Шумозаглушення",
-        listeningMode: "Режим прослуховування",
-        apply: "Застосувати",
-        refresh: "Оновити"
+        listeningMode: "Режим прослуховування"
     )
 
     static let zhHans = QCControlStrings(
@@ -273,9 +247,7 @@ private extension QCControlStrings {
         controlFailed: "无法确认耳机设置。请重新连接并检查当前模式。",
         noCustomMode: "请在 Bose App 中腾出一个自定义聆听模式，以便调节此级别。",
         noiseCancellation: "降噪",
-        listeningMode: "聆听模式",
-        apply: "应用",
-        refresh: "刷新"
+        listeningMode: "聆听模式"
     )
 
     static let zhTW = QCControlStrings(
@@ -291,9 +263,7 @@ private extension QCControlStrings {
         controlFailed: "無法確認耳機設定。請重新連接並檢查目前的模式。",
         noCustomMode: "請在 Bose App 中騰出一個自訂聆聽模式，才能調整此等級。",
         noiseCancellation: "降噪",
-        listeningMode: "聆聽模式",
-        apply: "套用",
-        refresh: "重新整理"
+        listeningMode: "聆聽模式"
     )
 
     static let zhHK = QCControlStrings(
@@ -309,8 +279,6 @@ private extension QCControlStrings {
         controlFailed: "未能確認耳機設定。請重新連接並檢查目前的模式。",
         noCustomMode: "請在 Bose App 騰出一個自訂聆聽模式，以調校此等級。",
         noiseCancellation: "降噪",
-        listeningMode: "聆聽模式",
-        apply: "套用",
-        refresh: "重新整理"
+        listeningMode: "聆聽模式"
     )
 }

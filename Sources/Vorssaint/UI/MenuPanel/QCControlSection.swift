@@ -15,25 +15,40 @@ struct QCControlSection: View {
     }
 }
 
+/// One page for the island and the menu panel: the island draws its own
+/// tiles and level bar, the panel uses the standard controls around it.
 @MainActor
 struct QCControlView: View {
+    /// Up to this many modes show side by side; more go in a menu.
+    private static let maximumInlineModes = 4
+    /// Keyboard steps arrive without a drag around them; wait for the last.
+    private static let keyboardSettleDelay = Duration.milliseconds(300)
+
     @Environment(\.notchPresentation) private var inIsland
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = BoseHeadphonesService.shared
     @State private var panelID = UUID()
     @State private var level = 0.0
+    @State private var levelEdited = false
+    @State private var dragging = false
+    @State private var pendingCommit: Task<Void, Never>?
 
     private var text: QCControlStrings { FeatureStrings.qcControl(l10n.language) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { service.panelOpened(panelID) }
-        .onDisappear { service.panelClosed(panelID) }
+        .onDisappear {
+            pendingCommit?.cancel()
+            service.panelClosed(panelID)
+        }
         .onChange(of: service.status, initial: true) { _, status in
-            if let noiseCancellation = status?.noiseCancellation { level = Double(noiseCancellation) }
+            guard !dragging, let noiseCancellation = status?.noiseCancellation else { return }
+            levelEdited = false
+            level = Double(noiseCancellation)
         }
     }
 
@@ -55,7 +70,7 @@ struct QCControlView: View {
             deviceMenu(label: text.choose)
         case .ready:
             if let device = service.device, let status = service.status {
-                controls(device, status: status).disabled(service.busy)
+                controls(device, status: status)
             }
         case .bluetoothOff:
             message(text.bluetoothOff)
@@ -72,94 +87,185 @@ struct QCControlView: View {
         }
     }
 
+    // MARK: - Connected
+
     private func controls(_ device: BoseHeadphoneDevice, status: BoseHeadphoneStatus) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                if service.devices.count > 1 {
-                    deviceMenu(label: device.name)
-                } else {
-                    Text(device.name).font(.callout.weight(.semibold)).lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                if let battery = status.battery {
-                    let percent = (Double(battery) / 100).formatted(.percent.locale(l10n.language.formattingLocale()))
-                    Label(percent, systemImage: "battery.100percent")
-                        .font(.caption.monospacedDigit())
-                        .accessibilityLabel(l10n.s.batteryLabel)
-                        .accessibilityValue(percent)
-                }
-            }
-            Divider()
-            LabeledContent(text.listeningMode) {
-                let current = status.modes.first { $0.id == status.activeMode }
-                let selection = current?.name ?? "#\(Int(status.activeMode) + 1)"
-                let items = status.modes.map { mode in
-                    NotchMenuItem(title: mode.name, checked: mode.id == status.activeMode,
-                                  enabled: mode.id != status.activeMode) { service.selectMode(mode.id) }
-                }
-                menu(title: text.listeningMode, selection: selection, items: items)
-                    .accessibilityValue(selection)
-            }
-            .font(.callout)
+        VStack(alignment: .leading, spacing: 12) {
+            header(device, status: status)
+            modes(status).disabled(service.busy)
             if status.noiseCancellation != nil || status.canSetLevel {
-                noiseControls(status)
+                noiseCancellation(status)
             }
             if !status.canSetLevel { message(text.noCustomMode) }
-            HStack {
-                Button(text.refresh, action: service.refresh)
-                    .controlSize(.small)
-                if service.busy {
-                    ProgressView().controlSize(.small)
-                }
+        }
+    }
+
+    private func header(_ device: BoseHeadphoneDevice, status: BoseHeadphoneStatus) -> some View {
+        HStack(spacing: 6) {
+            if service.devices.count > 1 {
+                deviceMenu(label: device.name)
+            } else {
+                Text(device.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if service.busy {
+                ProgressView().controlSize(.mini)
+            }
+            if let battery = status.battery {
+                let percent = (Double(battery) / 100).formatted(.percent.locale(l10n.language.formattingLocale()))
+                Label(percent, systemImage: Self.batterySymbol(battery))
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(l10n.s.batteryLabel)
+                    .accessibilityValue(percent)
             }
         }
     }
 
-    private func noiseControls(_ status: BoseHeadphoneStatus) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            LabeledContent(text.noiseCancellation) {
-                Text(level, format: .number.precision(.fractionLength(0)))
-                    .monospacedDigit()
+    @ViewBuilder
+    private func modes(_ status: BoseHeadphoneStatus) -> some View {
+        let modes = status.modes
+        if modes.count <= Self.maximumInlineModes {
+            if inIsland {
+                HStack(spacing: 4) {
+                    ForEach(modes) { mode in
+                        NotchActionTile(symbol: Self.symbol(for: mode), title: mode.name,
+                                        active: mode.id == status.activeMode) {
+                            if mode.id != status.activeMode { service.selectMode(mode.id) }
+                        }
+                    }
+                }
+            } else {
+                Picker(text.listeningMode, selection: modeSelection(status)) {
+                    ForEach(modes) { Text($0.name).tag($0.id) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
             }
-            HStack {
-                Slider(value: $level, in: 0...10, step: 1) { Text(text.noiseCancellation) }
+        } else {
+            LabeledContent(text.listeningMode) {
+                if inIsland {
+                    let selection = modes.first { $0.id == status.activeMode }?.name ?? "#\(Int(status.activeMode) + 1)"
+                    NotchMenuButton(title: text.listeningMode, items: modes.map { mode in
+                        NotchMenuItem(title: mode.name, checked: mode.id == status.activeMode,
+                                      enabled: mode.id != status.activeMode) { service.selectMode(mode.id) }
+                    }) {
+                        NotchBandMenuLabel(title: selection)
+                    }
+                } else {
+                    Picker(text.listeningMode, selection: modeSelection(status)) {
+                        ForEach(modes) { Text($0.name).tag($0.id) }
+                    }
                     .labelsHidden()
-                Button(text.apply) { service.setNoiseCancellation(Int(level)) }
-                    .disabled(Int(level) == status.noiseCancellation && status.liveSettings?.last != 0)
+                    .fixedSize()
+                }
             }
-            .disabled(!status.canSetLevel)
-            .controlSize(.small)
+            .font(.system(size: 11.5, weight: .medium))
         }
-        .font(.callout)
     }
+
+    private func modeSelection(_ status: BoseHeadphoneStatus) -> Binding<UInt8> {
+        Binding(get: { status.activeMode },
+                set: { id in if id != status.activeMode { service.selectMode(id) } })
+    }
+
+    private func noiseCancellation(_ status: BoseHeadphoneStatus) -> some View {
+        let value = Binding(get: { level }, set: { newValue in
+            level = newValue
+            levelEdited = true
+            scheduleCommit()
+        })
+        let reading = Int(level.rounded())
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(text.noiseCancellation)
+                    .font(.system(size: 11.5, weight: .medium))
+                Spacer(minLength: 4)
+                Text(reading, format: .number)
+                    .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityHidden(true)
+            if inIsland {
+                NotchLevelSlider(value: value, label: text.noiseCancellation, range: 0...10,
+                                 trackThickness: 8, valueLabel: "\(reading)",
+                                 onEditingChanged: editingChanged)
+                    .frame(height: 24)
+            } else {
+                Slider(value: value, in: 0...10, onEditingChanged: editingChanged)
+                    .controlSize(.small)
+                    .accessibilityLabel(text.noiseCancellation)
+                    .accessibilityValue("\(reading)")
+            }
+        }
+        .disabled(!status.canSetLevel || service.busy)
+    }
+
+    private func editingChanged(_ editing: Bool) {
+        dragging = editing
+        if editing {
+            pendingCommit?.cancel()
+        } else {
+            commitLevel()
+        }
+    }
+
+    private func scheduleCommit() {
+        pendingCommit?.cancel()
+        guard !dragging else { return }
+        pendingCommit = Task {
+            try? await Task.sleep(for: Self.keyboardSettleDelay)
+            guard !Task.isCancelled else { return }
+            commitLevel()
+        }
+    }
+
+    /// Writes only what the person moved to, never the value a fresh reading
+    /// put on the slider.
+    private func commitLevel() {
+        pendingCommit?.cancel()
+        pendingCommit = nil
+        guard levelEdited, let status = service.status, status.canSetLevel else { return }
+        levelEdited = false
+        let target = Int(level.rounded())
+        level = Double(target)
+        // A level set by the headset's own buttons is reapplied as a fixed level.
+        guard target != status.noiseCancellation || status.liveSettings?.last == 0 else { return }
+        service.setNoiseCancellation(target)
+    }
+
+    // MARK: - Shared pieces
 
     private func deviceMenu(label: String) -> some View {
         let items = service.devices.map { device in
             NotchMenuItem(title: device.name, checked: device.id == service.device?.id,
                           enabled: device.id != service.device?.id) { service.connect(to: device.id) }
         }
-        return menu(title: text.choose, selection: label, items: items)
-    }
-
-    @ViewBuilder
-    private func menu(title: String, selection: String, items: [NotchMenuItem]) -> some View {
-        if inIsland {
-            NotchMenuButton(title: title, items: items) {
-                NotchBandMenuLabel(title: selection)
-            }
-        } else {
-            Menu(selection) {
-                ForEach(items.indices, id: \.self) { index in
-                    let item = items[index]
-                    Button(action: item.action) {
-                        if item.checked { Label(item.title, systemImage: "checkmark") }
-                        else { Text(item.title) }
-                    }
-                    .disabled(!item.enabled)
+        return Group {
+            if inIsland {
+                NotchMenuButton(title: text.choose, items: items) {
+                    NotchBandMenuLabel(title: label)
                 }
+            } else {
+                Menu(label) {
+                    ForEach(items.indices, id: \.self) { index in
+                        let item = items[index]
+                        Button(action: item.action) {
+                            if item.checked { Label(item.title, systemImage: "checkmark") }
+                            else { Text(item.title) }
+                        }
+                        .disabled(!item.enabled)
+                    }
+                }
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel(text.choose)
             }
-            .controlSize(.small)
-            .accessibilityLabel(title)
         }
     }
 
@@ -184,6 +290,37 @@ struct QCControlView: View {
         case .disconnected, .timedOut: return text.connectionFailed
         case .rejected, .invalidResponse: return text.controlFailed
         case .noCustomMode: return text.noCustomMode
+        }
+    }
+
+    static func batterySymbol(_ percent: Int) -> String {
+        switch percent {
+        case ..<13: return "battery.0percent"
+        case ..<38: return "battery.25percent"
+        case ..<63: return "battery.50percent"
+        case ..<88: return "battery.75percent"
+        default: return "battery.100percent"
+        }
+    }
+
+    /// Bose's factory modes keep their preset when renamed; modes people
+    /// build in the Bose app get a neutral glyph.
+    static func symbol(for mode: BoseHeadphoneMode) -> String {
+        switch mode.preset {
+        case 1: return "waveform.slash"
+        case 2: return "ear.fill"
+        case 7: return "tram.fill"
+        case 8: return "leaf.fill"
+        case 9: return "figure.run"
+        case 10: return "house.fill"
+        case 11: return "briefcase.fill"
+        case 12: return "music.note"
+        case 13: return "moon.fill"
+        case 14: return "sparkles"
+        case 15: return "airplane"
+        case 34: return "waveform.and.person.filled"
+        case 36: return "film.fill"
+        default: return "slider.horizontal.3"
         }
     }
 }
