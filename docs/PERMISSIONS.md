@@ -104,7 +104,7 @@ The optional notch calendar asks for access when you press its permission button
 - **Monitor**, for the battery level of keyboards, mice, headphones and other accessories. It is read only while the battery details are open or while you show it in the menu bar or in the Power card. Both stay off until you turn them on.
 - **Notch**, for the optional accessory alerts when an accessory connects or runs low.
 - **Bluetooth on sleep**, which checks and switches Bluetooth around sleep while you have it turned on.
-- **QC Control**, which asks when you choose Find Headphones. It reads the battery and listening modes from a paired Bose QuietComfort Ultra headset and sends control changes directly to it. The control connection closes when you leave the QC Control page or panel.
+- **QC Control**, which asks when you choose Find Headphones. Once allowed, opening the page reconnects on its own to headphones already connected to this Mac. It reads the battery and listening modes from a paired Bose QuietComfort Ultra headset and sends control changes directly to it. The control connection closes 30 seconds after you leave the QC Control page or panel.
 
 **If you say no.** Accessories that report their battery to macOS directly, as many keyboards, mice and trackpads do, still show it. Others can be missing from the list and from accessory alerts. Bluetooth on sleep may be unable to switch Bluetooth off and back on. QC Control needs access to connect.
 

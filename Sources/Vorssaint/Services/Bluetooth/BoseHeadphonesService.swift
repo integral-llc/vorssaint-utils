@@ -25,18 +25,45 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
     private var connection: BoseHeadphoneTransport?
     private var connectionID: UUID?
     private var operation: Task<Void, Never>?
+    private var closing: Task<Void, Never>?
+    /// The headset last opened, preferred when several are connected.
+    private var preferredDeviceID: String?
+
+    /// The island hides its page every time it collapses; keeping the link
+    /// this long makes reopening it instant instead of a reconnect.
+    private static let lingerAfterClose = Duration.seconds(30)
 
     private var panelIsActive: Bool { !panels.isEmpty && AppFeature.qcControl.isAvailable }
 
     func panelOpened(_ id: UUID) {
         let wasClosed = panels.isEmpty
         panels.insert(id)
-        if wasClosed, let bluetooth { centralManagerDidUpdateState(bluetooth) }
+        guard wasClosed else { return }
+        closing?.cancel()
+        closing = nil
+        guard phase != .ready, operation == nil else { return }
+        if let bluetooth {
+            centralManagerDidUpdateState(bluetooth)
+        } else if CBManager.authorization == .allowedAlways {
+            // Access was granted before, so this neither prompts nor pages:
+            // discovery lists only headphones already connected to this Mac.
+            findHeadphones()
+        }
     }
 
     func panelClosed(_ id: UUID) {
         panels.remove(id)
         guard panels.isEmpty else { return }
+        closing?.cancel()
+        closing = Task { [weak self] in
+            try? await Task.sleep(for: Self.lingerAfterClose)
+            guard let self, !Task.isCancelled, self.panels.isEmpty else { return }
+            self.closing = nil
+            self.closeAfterLinger()
+        }
+    }
+
+    private func closeAfterLinger() {
         stopConnection()
         devices = []
         // The system prompt can take focus from the popover. Let it finish
@@ -68,7 +95,11 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
         guard central === bluetooth else { return }
         let authorization = CBManager.authorization
         guard panelIsActive else {
-            if authorization != .notDetermined || central.state == .unsupported { releaseBluetooth() }
+            if authorization != .notDetermined || central.state == .unsupported {
+                stopConnection()
+                devices = []
+                releaseBluetooth()
+            }
             return
         }
         stopConnection()
@@ -102,10 +133,6 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
         run { try await self.open(target) }
     }
 
-    func refresh() {
-        useConnection { commands, _ in try await commands.read() }
-    }
-
     func selectMode(_ id: UInt8) {
         useConnection { commands, status in try await commands.select(id, from: status) }
     }
@@ -120,7 +147,8 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
             let paired = await BoseHeadphoneTransport.pairedHeadphones()
             try Task.checkCancellation()
             self.devices = paired
-            if paired.count == 1, let target = paired.first {
+            let remembered = paired.first { $0.id == self.preferredDeviceID }
+            if let target = remembered ?? (paired.count == 1 ? paired.first : nil) {
                 try await self.open(target)
             } else {
                 self.phase = paired.isEmpty ? .noDevices : .choosing
@@ -132,6 +160,7 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
         connection?.disconnect()
         status = nil
         device = target
+        preferredDeviceID = target.id
         phase = .connecting
         let id = UUID()
         connectionID = id
@@ -162,7 +191,9 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
     private func commands(over link: BoseHeadphoneTransport) -> BoseHeadphoneCommands {
         BoseHeadphoneCommands { command in
             try Task.checkCancellation()
-            guard self.panelIsActive, self.connection === link, self.bluetooth?.state == .poweredOn,
+            // Not tied to an open page: a change started just before the
+            // island collapsed still finishes during the linger.
+            guard AppFeature.qcControl.isAvailable, self.connection === link, self.bluetooth?.state == .poweredOn,
                   CBManager.authorization == .allowedAlways else { throw CancellationError() }
             return try await link.send(command)
         }
