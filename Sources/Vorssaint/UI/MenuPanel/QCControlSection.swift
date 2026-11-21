@@ -29,7 +29,7 @@ struct QCControlView: View {
     @ObservedObject private var service = BoseHeadphonesService.shared
     @State private var panelID = UUID()
     @State private var level = 0.0
-    @State private var levelEdited = false
+    @State private var pendingLevel: QCPendingLevel?
     @State private var dragging = false
     @State private var pendingCommit: Task<Void, Never>?
 
@@ -45,11 +45,22 @@ struct QCControlView: View {
             pendingCommit?.cancel()
             service.panelClosed(panelID)
         }
-        .onChange(of: service.status, initial: true) { _, status in
-            guard !dragging, let noiseCancellation = status?.noiseCancellation else { return }
-            levelEdited = false
+        // Only the level itself moves the slider: battery updates arrive about
+        // once a minute and must not discard a change waiting to be sent.
+        .onChange(of: service.status?.noiseCancellation, initial: true) { _, noiseCancellation in
+            guard !dragging, let noiseCancellation else { return }
+            pendingLevel = nil
             level = Double(noiseCancellation)
         }
+        // A level waiting to be sent belongs to the mode and headset it was
+        // made in; switching either drops it rather than rewriting the new one.
+        .onChange(of: editOrigin) {
+            discardPendingLevel()
+        }
+    }
+
+    private var editOrigin: QCPendingLevel.Origin? {
+        QCPendingLevel.Origin(deviceID: service.device?.id, status: service.status)
     }
 
     @ViewBuilder
@@ -177,7 +188,9 @@ struct QCControlView: View {
     private func noiseCancellation(_ status: BoseHeadphoneStatus) -> some View {
         let value = Binding(get: { level }, set: { newValue in
             level = newValue
-            levelEdited = true
+            if let editOrigin {
+                pendingLevel = QCPendingLevel(level: Int(newValue.rounded()), origin: editOrigin)
+            }
             scheduleCommit()
         })
         let reading = Int(level.rounded())
@@ -226,17 +239,25 @@ struct QCControlView: View {
     }
 
     /// Writes only what the person moved to, never the value a fresh reading
-    /// put on the slider.
+    /// put on the slider, and only to the mode it was moved in.
     private func commitLevel() {
         pendingCommit?.cancel()
         pendingCommit = nil
-        guard levelEdited, let status = service.status, status.canSetLevel else { return }
-        levelEdited = false
-        let target = Int(level.rounded())
-        level = Double(target)
-        // A level set by the headset's own buttons is reapplied as a fixed level.
-        guard target != status.noiseCancellation || status.liveSettings?.last == 0 else { return }
-        service.setNoiseCancellation(target)
+        guard let pending = pendingLevel else { return }
+        pendingLevel = nil
+        if let target = pending.commitTarget(deviceID: service.device?.id, status: service.status) {
+            level = Double(target)
+            service.setNoiseCancellation(target, inMode: pending.origin.activeMode)
+        } else if let current = service.status?.noiseCancellation {
+            level = Double(current)
+        }
+    }
+
+    private func discardPendingLevel() {
+        pendingCommit?.cancel()
+        pendingCommit = nil
+        pendingLevel = nil
+        if !dragging, let current = service.status?.noiseCancellation { level = Double(current) }
     }
 
     // MARK: - Shared pieces

@@ -355,6 +355,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Bluetooth/BoseHeadphoneProtocol.swift
         Sources/Vorssaint/Services/Bluetooth/BoseHeadphoneTransport.swift
         Sources/Vorssaint/Services/Bluetooth/BluetoothAudioRoutes.swift
+        Sources/Vorssaint/UI/MenuPanel/QCPendingLevel.swift
         Sources/Vorssaint/Core/QCControlStrings.swift
         Sources/Vorssaint/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vorssaint/Core/NotchMusicExtrasStrings.swift

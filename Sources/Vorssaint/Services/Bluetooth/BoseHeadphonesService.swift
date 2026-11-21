@@ -137,8 +137,10 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
         useConnection { commands, status in try await commands.select(id, from: status) }
     }
 
-    func setNoiseCancellation(_ level: Int) {
-        useConnection { commands, status in try await commands.setLevel(level, from: status) }
+    /// `mode` is the listening mode the level was chosen in; the headset is
+    /// left alone if it has switched since.
+    func setNoiseCancellation(_ level: Int, inMode mode: UInt8) {
+        useConnection { commands, status in try await commands.setLevel(level, inMode: mode, from: status) }
     }
 
     private func discover() {
@@ -164,16 +166,27 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
         phase = .connecting
         let id = UUID()
         connectionID = id
-        let link = BoseHeadphoneTransport { [weak self] in
+        let link = BoseHeadphoneTransport(onDisconnect: { [weak self] in
             Task { @MainActor in
                 guard let self, self.connectionID == id else { return }
                 self.stopConnection()
                 self.phase = .failed(.disconnected)
             }
-        }
+        }, onUnsolicited: { [weak self] message in
+            guard let level = message.batteryLevel else { return }
+            Task { @MainActor in
+                guard let self, self.connectionID == id, let status = self.status else { return }
+                self.status = status.updating(battery: level)
+            }
+        })
         connection = link
         try await link.connect(to: target.id)
-        let snapshot = try await commands(over: link).read()
+        let control = commands(over: link)
+        let snapshot = try await control.read()
+        // Keeps the battery current while the link is up, including the
+        // linger after the page closes. A headset that declines still gets a
+        // fresh reading on every connect and after every change.
+        _ = try await control.subscribeToBatteryUpdates()
         try Task.checkCancellation()
         status = snapshot
         phase = .ready
@@ -189,14 +202,17 @@ final class BoseHeadphonesService: NSObject, ObservableObject, @preconcurrency C
     }
 
     private func commands(over link: BoseHeadphoneTransport) -> BoseHeadphoneCommands {
-        BoseHeadphoneCommands { command in
-            try Task.checkCancellation()
-            // Not tied to an open page: a change started just before the
-            // island collapsed still finishes during the linger.
-            guard AppFeature.qcControl.isAvailable, self.connection === link, self.bluetooth?.state == .poweredOn,
-                  CBManager.authorization == .allowedAlways else { throw CancellationError() }
-            return try await link.send(command)
+        let send = { (closesOnTimeout: Bool) in
+            { (command: BoseMessage) async throws -> [UInt8] in
+                try Task.checkCancellation()
+                // Not tied to an open page: a change started just before the
+                // island collapsed still finishes during the linger.
+                guard AppFeature.qcControl.isAvailable, self.connection === link, self.bluetooth?.state == .poweredOn,
+                      CBManager.authorization == .allowedAlways else { throw CancellationError() }
+                return try await link.send(command, closesOnTimeout: closesOnTimeout)
+            }
         }
+        return BoseHeadphoneCommands(send: send(true), sendOptional: send(false))
     }
 
     private func run(_ work: @escaping () async throws -> Void) {

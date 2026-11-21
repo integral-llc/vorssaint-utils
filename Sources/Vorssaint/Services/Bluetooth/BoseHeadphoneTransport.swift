@@ -49,6 +49,8 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
 
     private static let worker = BluetoothRunLoop(name: "Vorssaint Bose Headphones")
     private let onDisconnect: () -> Void
+    /// Statuses the headset sends on its own, and replies nothing waits for.
+    private let onUnsolicited: (BoseMessage) -> Void
     private var channel: IOBluetoothRFCOMMChannel?
     private var opening: Opening?
     private var pending: (command: BoseMessage, reply: CheckedContinuation<[UInt8], Error>)?
@@ -56,8 +58,9 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     private var stream = BoseMessageStream()
     private var queries = BluetoothQueryLease()
 
-    init(onDisconnect: @escaping () -> Void) {
+    init(onDisconnect: @escaping () -> Void, onUnsolicited: @escaping (BoseMessage) -> Void = { _ in }) {
         self.onDisconnect = onDisconnect
+        self.onUnsolicited = onUnsolicited
     }
 
     static func pairedHeadphones() async -> [BoseHeadphoneDevice] {
@@ -77,9 +80,13 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         try await Task.sleep(for: .milliseconds(500))
     }
 
-    func send(_ command: BoseMessage) async throws -> [UInt8] {
+    /// A required request that goes unanswered means the link is gone, so
+    /// its timeout closes the channel; an optional one fails only itself.
+    func send(_ command: BoseMessage, closesOnTimeout: Bool = true) async throws -> [UInt8] {
         try await withCheckedThrowingContinuation { continuation in
-            Self.worker.perform { self.write(command, completion: continuation) }
+            Self.worker.perform {
+                self.write(command, closesOnTimeout: closesOnTimeout, completion: continuation)
+            }
         }
     }
 
@@ -165,7 +172,8 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         }
     }
 
-    private func write(_ command: BoseMessage, completion: CheckedContinuation<[UInt8], Error>) {
+    private func write(_ command: BoseMessage, closesOnTimeout: Bool,
+                       completion: CheckedContinuation<[UInt8], Error>) {
         guard let channel, opening == nil, pending == nil else {
             completion.resume(throwing: BoseHeadphoneError.disconnected)
             return
@@ -175,11 +183,25 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let status = bytes.withUnsafeMutableBytes {
             channel.writeSync($0.baseAddress, length: UInt16($0.count))
         }
-        if status == kIOReturnSuccess {
+        guard status == kIOReturnSuccess else {
+            close(with: .disconnected)
+            return
+        }
+        if closesOnTimeout {
             armTimeout(seconds: 3)
         } else {
-            close(with: .disconnected)
+            armTimeout(seconds: 3) { $0.abandonPending() }
         }
+    }
+
+    /// An optional request that went unanswered fails alone; the channel and
+    /// any bytes already buffered stay. A late reply finds nothing waiting
+    /// and goes to `onUnsolicited`.
+    private func abandonPending() {
+        clearTimeout()
+        let reply = pending?.reply
+        pending = nil
+        reply?.resume(throwing: BoseHeadphoneError.timedOut)
     }
 
     private func armTimeout(seconds: TimeInterval,
@@ -240,7 +262,10 @@ final class BoseHeadphoneTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         Self.worker.perform {
             guard let channel, channel === self.channel else { return }
             for message in self.stream.receive(bytes) {
-                guard let pending = self.pending, let result = message.reply(to: pending.command) else { continue }
+                guard let pending = self.pending, let result = message.reply(to: pending.command) else {
+                    self.onUnsolicited(message)
+                    continue
+                }
                 self.clearTimeout()
                 self.pending = nil
                 switch result {

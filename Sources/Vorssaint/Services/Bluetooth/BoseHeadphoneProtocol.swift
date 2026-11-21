@@ -36,6 +36,13 @@ struct BoseMessage: Equatable {
 
     var bytes: [UInt8] { [block, function, flags, UInt8(payload.count)] + payload }
 
+    /// The level in a battery status, whether it answers a read or the
+    /// headset sent it on its own after `subscribeToBatteryUpdates`.
+    var batteryLevel: Int? {
+        guard block == 2, function == 2, Operation(rawValue: flags) == .status else { return nil }
+        return BoseHeadphoneStatus.batteryLevel(payload)
+    }
+
     func reply(to request: Self) -> Result<[UInt8], BoseHeadphoneError>? {
         guard block == request.block, function == request.function, flags >> 4 == 0 else { return nil }
         switch Operation(rawValue: flags) {
@@ -130,10 +137,29 @@ struct BoseHeadphoneStatus: Equatable {
     }
 
     var canSetLevel: Bool { liveSettings != nil || customSlot != nil }
+
+    /// Headphones report one 4-byte record whose first byte is the percentage.
+    static func batteryLevel(_ payload: [UInt8]) -> Int? {
+        guard let level = payload.first, level <= 100 else { return nil }
+        return Int(level)
+    }
+
+    func updating(battery: Int) -> BoseHeadphoneStatus {
+        BoseHeadphoneStatus(allModes: allModes, activeMode: activeMode, battery: battery, liveSettings: liveSettings)
+    }
 }
 
 struct BoseHeadphoneCommands {
     let send: (BoseMessage) async throws -> [UInt8]
+    /// For requests the session works without: their timeout must not take
+    /// the connection, and the controls already read, down with it.
+    let sendOptional: (BoseMessage) async throws -> [UInt8]
+
+    init(send: @escaping (BoseMessage) async throws -> [UInt8],
+         sendOptional: ((BoseMessage) async throws -> [UInt8])? = nil) {
+        self.send = send
+        self.sendOptional = sendOptional ?? send
+    }
 
     func read() async throws -> BoseHeadphoneStatus {
         let capabilities = try await request(2)
@@ -149,6 +175,23 @@ struct BoseHeadphoneCommands {
         return try await readStatus(modes: modes, checkLiveSettings: true)
     }
 
+    /// Asks the headset to send its battery status on its own, which a QC
+    /// Ultra does about once a minute. The subscription ends with the
+    /// connection. False when the headset declines it or never answers.
+    func subscribeToBatteryUpdates() async throws -> Bool {
+        // Mask byte, then a big-endian bitmap of function blocks; bit 2 is Status.
+        let statusBlock: UInt8 = 1 << 2
+        do {
+            let granted = try await sendOptional(BoseMessage(block: 9, function: 2, operation: .writeAndRead,
+                                                             payload: [0x01, 0, 0, 0, statusBlock]))
+            return granted.count == 4 && granted[3] & statusBlock != 0
+        } catch BoseHeadphoneError.rejected {
+            return false
+        } catch BoseHeadphoneError.timedOut {
+            return false
+        }
+    }
+
     func select(_ id: UInt8, from status: BoseHeadphoneStatus) async throws -> BoseHeadphoneStatus {
         guard status.modes.contains(where: { $0.id == id }) else { throw BoseHeadphoneError.invalidResponse }
         try await activate(id)
@@ -157,15 +200,24 @@ struct BoseHeadphoneCommands {
         return updated
     }
 
-    func setLevel(_ level: Int, from status: BoseHeadphoneStatus) async throws -> BoseHeadphoneStatus {
+    /// `expectedMode` is the mode the level was chosen in. The headset's own
+    /// button switches modes without telling the app, so the active mode is
+    /// read first: when it moved, nothing is written and the fresh state
+    /// comes back for the page to show.
+    func setLevel(_ level: Int, inMode expectedMode: UInt8,
+                  from status: BoseHeadphoneStatus) async throws -> BoseHeadphoneStatus {
         guard (0...10).contains(level) else { throw BoseHeadphoneError.invalidResponse }
+        guard try await readActiveMode() == expectedMode else {
+            return try await readStatus(modes: status.allModes, checkLiveSettings: status.liveSettings != nil)
+        }
         if status.liveSettings != nil {
-            return try await setLiveLevel(level, modes: status.allModes)
+            return try await setLiveLevel(level, inMode: expectedMode, modes: status.allModes)
         }
         return try await setCustomLevel(level, status: status)
     }
 
-    private func setLiveLevel(_ level: Int, modes: [BoseHeadphoneMode]) async throws -> BoseHeadphoneStatus {
+    private func setLiveLevel(_ level: Int, inMode expectedMode: UInt8,
+                              modes: [BoseHeadphoneMode]) async throws -> BoseHeadphoneStatus {
         guard var settings = try await readLiveSettings() else { throw BoseHeadphoneError.invalidResponse }
         settings[0] = UInt8(10 - level)
         settings[1] = 0
@@ -173,7 +225,11 @@ struct BoseHeadphoneCommands {
         settings[4] = 1
         _ = try await request(10, .writeAndRead, settings)
         let updated = try await readStatus(modes: modes, checkLiveSettings: true)
-        guard updated.liveSettings == settings else { throw BoseHeadphoneError.invalidResponse }
+        // A switch on the headset during the write leaves it unclear which
+        // mode took the level, so it is not reported as applied.
+        guard updated.liveSettings == settings, updated.activeMode == expectedMode else {
+            throw BoseHeadphoneError.invalidResponse
+        }
         return updated
     }
 
@@ -193,18 +249,25 @@ struct BoseHeadphoneCommands {
         return updated
     }
 
-    private func readStatus(modes: [BoseHeadphoneMode], checkLiveSettings: Bool) async throws -> BoseHeadphoneStatus {
+    private func readActiveMode() async throws -> UInt8 {
         guard let active = try await request(3).first else { throw BoseHeadphoneError.invalidResponse }
+        return active
+    }
+
+    private func readStatus(modes: [BoseHeadphoneMode], checkLiveSettings: Bool) async throws -> BoseHeadphoneStatus {
+        let active = try await readActiveMode()
         let liveSettings = checkLiveSettings ? try await readLiveSettings() : nil
-        var battery: Int?
+        let battery = try await readBattery()
+        return BoseHeadphoneStatus(allModes: modes, activeMode: active, battery: battery, liveSettings: liveSettings)
+    }
+
+    private func readBattery() async throws -> Int? {
         do {
-            if let level = try await send(BoseMessage(block: 2, function: 2)).first, level <= 100 {
-                battery = Int(level)
-            }
+            return BoseHeadphoneStatus.batteryLevel(try await send(BoseMessage(block: 2, function: 2)))
         } catch BoseHeadphoneError.rejected {
             // Battery reporting is optional and independent from listening modes.
+            return nil
         }
-        return BoseHeadphoneStatus(allModes: modes, activeMode: active, battery: battery, liveSettings: liveSettings)
     }
 
     private func readMode(_ id: UInt8) async throws -> BoseHeadphoneMode {
