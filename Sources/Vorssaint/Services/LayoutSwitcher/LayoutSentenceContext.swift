@@ -17,6 +17,8 @@ struct LayoutSentenceContext {
     /// A gap this long means a new thought, quite possibly in the other language.
     static let pause: TimeInterval = 5
     private static let weight = 1.0
+    /// The lean of a window that agrees all the way through.
+    static let strongestLean = 2 * weight
 
     private var window: [String] = []
     private var lastActivity: Date?
@@ -27,7 +29,7 @@ struct LayoutSentenceContext {
     func lean(toward typed: String, over mapped: String, at now: Date) -> Double {
         guard let lastActivity, now.timeIntervalSince(lastActivity) <= Self.pause else { return 0 }
         let difference = window.reduce(0) { $0 + ($1 == typed ? 1 : 0) - ($1 == mapped ? 1 : 0) }
-        return 2 * Self.weight * Double(difference) / Double(Self.windowSize)
+        return Self.strongestLean * Double(difference) / Double(Self.windowSize)
     }
 
     mutating func record(_ language: String, at now: Date) {

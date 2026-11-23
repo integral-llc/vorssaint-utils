@@ -17,6 +17,10 @@ struct LayoutCorrectionWatch: Equatable {
         let word: String
         /// nil when the layout did not follow the word, so there is none to restore.
         let previousSourceID: String?
+        /// The open words before it that went over with it, each followed by
+        /// its space, as typed and as corrected. Empty when none did.
+        var leadingOriginal = ""
+        var leadingCorrected = ""
     }
 
     /// The correction the shortcut would take back.

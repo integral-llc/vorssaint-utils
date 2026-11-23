@@ -35,7 +35,156 @@ enum LayoutRuEnTokenTests {
         literalChecks(suite, scorer: scorer)
         slipChecks(suite, scorer: scorer)
         urlChecks(suite, scorer: scorer)
+        catchUpChecks(suite, scorer: scorer)
+        sentenceChecks(suite, scorer: scorer)
+        pendingRunChecks(suite)
         otherPairChecks(suite)
+    }
+
+    /// Short words left open before a rewritten one go over with it, unless
+    /// the other spelling is a word its language barely uses.
+    private static func catchUpChecks(_ suite: TestSuite, scorer: LayoutDecisionScorer) {
+        func follows(_ token: String, typedLanguage: String = "en") -> Bool {
+            let typedOnLatin = typedLanguage == "en"
+            guard let mapped = typedOnLatin ? table.mapForward(token) : table.mapReverse(token) else { return false }
+            return scorer.followsCorrection(typed: token, typedLanguage: typedLanguage,
+                                            mapped: mapped, mappedLanguage: typedOnLatin ? "ru" : "en")
+        }
+        for token in ["z", "Z", "b", "c", "d", "j", "r", "yt", "nj", "vs", "jy", "ns", "e", "f", "rjulf"] {
+            suite.expect(follows(token), "`\(token)` before a word rewritten into Russian goes with it")
+        }
+        for token in ["a", "I", "i", "the", "is", "it", "to", "on", "hello"] {
+            suite.expect(!follows(token), "`\(token)` stays English even before a Russian word")
+        }
+        for token in ["ш", "ф"] {
+            suite.expect(follows(token, typedLanguage: "ru"), "`\(token)` before a word rewritten into English goes with it")
+        }
+        for token in ["я", "и", "не", "мы"] {
+            suite.expect(!follows(token, typedLanguage: "ru"), "`\(token)` stays Russian even before an English word")
+        }
+        suite.expect(!follows("z,") && !follows("nj-nj"), "only plain letters follow a correction")
+
+        func recased(_ replacement: String, typed: String, shown: String?) -> String {
+            LayoutSwitcherSupport.matchingShownCase(replacement, typed: typed, shown: shown)
+        }
+        suite.expect(recased("я делаю", typed: "z ltkf.", shown: "Z ltkf.") == "Я делаю",
+                     "a capital the app added after typing is carried over, not added again in front of the user")
+        suite.expect(recased("привет", typed: "ghbdtn", shown: "Ghbdtn") == "Привет",
+                     "an auto-capitalised first word keeps its capital")
+        suite.expect(recased("Я делаю", typed: "Z ltkf.", shown: "Z ltkf.") == "Я делаю",
+                     "a capital typed with Shift stays a capital")
+        suite.expect(recased("я делаю", typed: "z ltkf.", shown: nil) == "я делаю"
+                        && recased("я делаю", typed: "z ltkf.", shown: "x ltkf.") == "я делаю"
+                        && recased("я делаю", typed: "z ltkf.", shown: "Z ltkf") == "я делаю",
+                     "a field that says nothing, or shows other text, leaves the case as typed")
+    }
+
+    /// What the text reads after typing `keys` on the English layout, with
+    /// the service's steps: the buffer finishes words, the run collects the
+    /// open ones, and a rewritten word takes its followers along. `⌫` is a
+    /// Backspace.
+    private static func typedSentence(_ keys: String, scorer: LayoutDecisionScorer) -> String {
+        var buffer = LayoutTypingBuffer()
+        var run = LayoutPendingRun()
+        var text = ""
+        var activity: UInt64 = 0
+        for key in keys.map(String.init) {
+            activity += 1
+            if key == "⌫" {
+                run.deleted(wasTyping: !buffer.typing.isEmpty, hadFinished: !buffer.lastFinished.isEmpty)
+                buffer.deleteBackward()
+                if !text.isEmpty { text.removeLast() }
+                continue
+            }
+            let wasTyping = !buffer.typing.isEmpty
+            text += key
+            guard let finished = buffer.type(key, earlyBoundaries: []) else {
+                if key.allSatisfy(\.isWhitespace), !wasTyping { run.clear() }
+                continue
+            }
+            run.record(finished, activity: activity, tracking: true, alreadyCorrected: nil)
+            guard finished.ending == .space,
+                  LayoutSwitcherSupport.isCorrectable(finished.token, minimumLength: 3),
+                  let mapped = table.mapForward(finished.token)
+            else { continue }
+            switch scorer.judgement(typed: finished.token, typedLanguage: "en", mapped: mapped, mappedLanguage: "ru") {
+            case .rewrite(_, let replacement, _):
+                var followers: [(String, String)] = []
+                for word in run.leading(before: activity).reversed() {
+                    guard let other = table.mapForward(word.token),
+                          scorer.followsCorrection(typed: word.token, typedLanguage: "en",
+                                                   mapped: other, mappedLanguage: "ru")
+                    else { break }
+                    followers.insert((word.token, other), at: 0)
+                }
+                let original = followers.map { $0.0 + " " }.joined() + finished.token + " "
+                let corrected = followers.map { $0.1 + " " }.joined() + replacement + " "
+                guard text.hasSuffix(original) else { return "text drifted from the run" }
+                text = String(text.dropLast(original.count)) + corrected
+                run.clear()
+            case .keep:
+                run.settle(through: activity)
+            case .undecided:
+                break
+            }
+        }
+        return text
+    }
+
+    private static func sentenceChecks(_ suite: TestSuite, scorer: LayoutDecisionScorer) {
+        let cases: [(typed: String, expected: String, why: String)] = [
+            ("z ltkf. ", "я делаю ", "a one-letter word goes over with the word that settles the sentence"),
+            ("Z ltkf. ", "Я делаю ", "a capital stays a capital"),
+            ("yt pyf. ", "не знаю ", "a two-letter word too short to judge goes over with it"),
+            ("b z ltkf. ", "и я делаю ", "every open word back to the start of the run goes over"),
+            ("Z ltkd⌫f. ", "Я делаю ", "fixing a typo in the word being typed keeps the words before it"),
+            ("Z x⌫⌫ ltkf. ", "Я делаю ", "deleting back into the last word keeps the run up to it"),
+            ("x⌫⌫Z ltkf. ", "Я делаю ", "deleting text the run never saw only drops what came before"),
+            ("Z ⌫⌫ltkf. ", "делаю ", "deleting the word itself takes it out of the run"),
+            ("a ltkf. ", "a делаю ", "an English word stays English"),
+            ("ok z ltkf. ", "ok я делаю ", "a word that would not be a word in Russian ends the run"),
+            ("z  ltkf. ", "z  делаю ", "a double space ends the run, since its text is no longer known"),
+            ("hello z ltkf. ", "hello я делаю ", "a word judged English closes the run behind it")
+        ]
+        for test in cases {
+            let result = typedSentence(test.typed, scorer: scorer)
+            suite.expect(result == test.expected, "\(test.why): `\(test.typed)` became `\(result)`")
+        }
+    }
+
+    private static func pendingRunChecks(_ suite: TestSuite) {
+        var run = LayoutPendingRun()
+        run.append("z", activity: 3)
+        run.append("yt", activity: 6)
+        suite.expect(run.leading(before: 9).map(\.token) == ["z", "yt"],
+                     "every open word before the rewritten one comes along, oldest first")
+        suite.expect(run.leading(before: 6).map(\.token) == ["z"],
+                     "words finished after the judged one are not before it")
+        run.deleted(wasTyping: true, hadFinished: false)
+        suite.expect(run.words.count == 2, "a typo fixed in the word being typed leaves the run")
+        run.deleted(wasTyping: false, hadFinished: true)
+        suite.expect(run.words.map(\.token) == ["z"], "deleting into the last word takes it out until its next space")
+        run.deleted(wasTyping: false, hadFinished: false)
+        suite.expect(run.words.isEmpty, "deleting past the known text ends the run")
+
+        run.append("z", activity: 3)
+        run.append("yt", activity: 6)
+        run.append("ns", activity: 12)
+        run.settle(through: 6)
+        suite.expect(run.words.map(\.token) == ["ns"], "a word kept as typed closes the run behind it")
+        for index in 0..<(LayoutPendingRun.limit + 2) {
+            run.append("b", activity: UInt64(100 + index))
+        }
+        suite.expect(run.words.count == LayoutPendingRun.limit, "the run is bounded")
+        run.clear()
+        suite.expect(run.words.isEmpty, "clearing empties the run")
+
+        run.append("z", activity: 1)
+        run.append("z,", activity: 2, open: false)
+        run.append("b", activity: 3)
+        suite.expect(run.leading(before: 2).map(\.token) == ["z"]
+                        && run.leading(before: 4).map(\.token) == ["b"],
+                     "a word that cannot go over keeps the words before it and closes the run after it")
     }
 
     static let table = LayoutSwitcherSupport.table(from: LayoutDetectionTests.glyphs(LayoutDetectionTests.latin),

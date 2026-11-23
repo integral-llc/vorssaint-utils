@@ -42,6 +42,9 @@ final class LayoutSwitcherService: ObservableObject {
     private var layoutCache: [EnabledLayout]?
     private var gate = LayoutConfidenceGate()
     private var context = LayoutSentenceContext()
+    /// Words before the caret nothing has settled, to go along when the word
+    /// after them is rewritten.
+    private var run = LayoutPendingRun()
     /// What automatic mode last rewrote, so the shortcut can take it back,
     /// and whether the user is taking it back by hand.
     private var watch = LayoutCorrectionWatch()
@@ -251,13 +254,16 @@ final class LayoutSwitcherService: ObservableObject {
         // Mapping it again could land on a third layout's spelling instead.
         guard let target, let corrected = target.automatic?.original ?? retyped(target.word)
         else { return false }
+        // The words that went over with it come back with it.
+        let leading = target.automatic.map { (original: $0.leadingOriginal, corrected: $0.leadingCorrected) }
+            ?? (original: "", corrected: "")
 
         let replaced = TextSnippetService.postExpansion(
-            deleteCount: target.deleteCount,
+            deleteCount: target.deleteCount + leading.corrected.count,
             // A highlighted selection goes with one Delete; there is no typed
             // text in front of it to clear a completion after.
-            typedTrigger: selection.isEmpty ? target.word + target.suffix : "",
-            text: corrected + target.suffix,
+            typedTrigger: selection.isEmpty ? leading.corrected + target.word + target.suffix : "",
+            text: leading.original + corrected + target.suffix,
             trailingKeyCode: nil,
             trailingFlags: []
         )
@@ -569,6 +575,8 @@ final class LayoutSwitcherService: ObservableObject {
         case kVK_Delete:
             eventLock.withLock {
                 activity &+= 1
+                run.deleted(wasTyping: !typingBuffer.typing.isEmpty,
+                            hadFinished: !typingBuffer.lastFinished.isEmpty)
                 typingBuffer.deleteBackward()
                 watch.deleted(typing: typingBuffer.typing, lastFinished: typingBuffer.lastFinished)
             }
@@ -617,14 +625,22 @@ final class LayoutSwitcherService: ObservableObject {
         guard config.enabled else { return .nothing }
         watch.typed(typed)
         guard let finished = typingBuffer.type(typed, earlyBoundaries: config.automatic ? earlyBoundaries : [])
-        else { return .nothing }
+        else {
+            // A second space, or a tab: the text behind the caret is no longer
+            // the run's words joined by single spaces.
+            if typed.allSatisfy(\.isWhitespace) { run.clear() }
+            return .nothing
+        }
         if let undone = watch.finished(finished.token) {
             // The same answer as the shortcut taking it back, except the user
             // already put the layout where they want it.
             context.reset()
             gate.reset()
+            run.clear()
             return .reverted(word: undone.word)
         }
+        run.record(finished, activity: activity,
+                   tracking: config.automatic, alreadyCorrected: watch.last?.corrected)
         guard config.automatic, !finished.isSkipped,
               // Already rewritten when its punctuation went in; the space
               // after it has nothing left to decide.
@@ -669,57 +685,115 @@ final class LayoutSwitcherService: ObservableObject {
                 // of them forty words apart are not somebody on the wrong layout.
                 gate.reset()
                 context.record(typedLanguage, at: now)
+                run.settle(through: finished.activity)
             }
             vocabulary.recordTyped(word)
         case .rewrite(let candidate):
-            rewrite(finished, as: candidate, from: currentID, at: now)
+            rewrite(finished, as: candidate, from: current, language: typedLanguage, at: now)
         }
     }
 
     private func rewrite(_ finished: FinishedWord, as candidate: Candidate,
-                         from currentID: String, at now: Date) {
+                         from current: EnabledLayout, language typedLanguage: String, at now: Date) {
         let confident = candidate.verdict.confidence == .high
-        let goesAhead = eventLock.withLock { () -> Bool in
+        let decision = eventLock.withLock { () -> (goesAhead: Bool, open: [LayoutPendingRun.Word]) in
             // Anything typed or clicked since means the text behind the caret
             // is no longer the text that was judged.
-            guard activity == finished.activity else { return false }
+            guard activity == finished.activity else { return (false, []) }
             // A doubtful verdict waits for a second one, and only a space asks
             // the gate: the space after early punctuation brings the same word
             // round again, and asking twice would count one word as two.
-            return finished.ending == .space
+            let goesAhead = finished.ending == .space
                 ? gate.admits(candidate.verdict.confidence, target: candidate.layout.id)
                 : confident
+            return (goesAhead, run.leading(before: finished.activity))
         }
-        guard goesAhead, replaceText(of: finished, with: candidate.replacement) else { return }
+        guard decision.goesAhead else { return }
+        // After Return the line may be gone, and only the word is checked.
+        let leading = finished.ending == .newline
+            ? []
+            : followers(of: decision.open, typedOn: current, language: typedLanguage, into: candidate)
+        let original = leading.map { $0.original + " " }.joined()
+        let recased = LayoutSwitcherSupport.matchingShownCase(
+            leading.map { $0.corrected + " " }.joined() + candidate.replacement,
+            typed: original + finished.token,
+            shown: shownText(of: original + finished.token, ending: finished.ending))
+        let corrected = String(recased.prefix(original.count))
+        let replacement = String(recased.dropFirst(original.count))
+        guard replaceText(of: finished, with: replacement,
+                          leading: (original: original, corrected: corrected))
+        else { return }
         let followed = select(candidate.layout)
         eventLock.withLock {
+            for _ in leading { context.record(candidate.language, at: now) }
             context.record(candidate.language, at: now)
+            run.clear()
             switch finished.ending {
-            case .space: typingBuffer.replaceLastFinished(finished.token, with: candidate.replacement)
-            case .punctuation: typingBuffer.replaceTyping(finished.token, with: candidate.replacement)
+            case .space: typingBuffer.replaceLastFinished(finished.token, with: replacement)
+            case .punctuation: typingBuffer.replaceTyping(finished.token, with: replacement)
             case .newline: return
             }
             watch.record(AutomaticCorrection(original: finished.token,
-                                             corrected: candidate.replacement,
+                                             corrected: replacement,
                                              word: candidate.word,
-                                             previousSourceID: followed ? currentID : nil))
+                                             previousSourceID: followed ? current.id : nil,
+                                             leadingOriginal: original,
+                                             leadingCorrected: corrected))
         }
+    }
+
+    /// `typed` as the field shows it, which can differ in its capitals, or nil
+    /// when the field does not say. After Return the line may be gone.
+    private func shownText(of typed: String, ending: LayoutTypingBuffer.Ending) -> String? {
+        let after = ending == .space ? " " : ""
+        guard ending != .newline,
+              let shown = NSWorkspace.shared.frontmostApplication.flatMap({
+                  SelectedTextReader.textBeforeCaret(processID: $0.processIdentifier,
+                                                     length: (typed + after).utf16.count)
+              }),
+              shown.hasSuffix(after)
+        else { return nil }
+        return String(shown.dropLast(after.count))
+    }
+
+    /// The open words that go over with a rewritten word, nearest first back
+    /// to the first that does not, returned in text order.
+    private func followers(of open: [LayoutPendingRun.Word], typedOn current: EnabledLayout,
+                           language typedLanguage: String,
+                           into candidate: Candidate) -> [(original: String, corrected: String)] {
+        guard !open.isEmpty,
+              let currentGlyphs = glyphs(for: current.source, id: current.id),
+              let candidateGlyphs = glyphs(for: candidate.layout.source, id: candidate.layout.id)
+        else { return [] }
+        let table = LayoutSwitcherSupport.table(from: currentGlyphs, to: candidateGlyphs)
+        var followers: [(original: String, corrected: String)] = []
+        for word in open.reversed() {
+            guard let mapped = table.mapForward(word.token),
+                  scorer.followsCorrection(typed: word.token, typedLanguage: typedLanguage,
+                                           mapped: mapped, mappedLanguage: candidate.language)
+            else { break }
+            followers.append((word.token, mapped))
+        }
+        return followers.reversed()
     }
 
     /// False only when nothing should follow. After Return the text may be
     /// out of reach, and the layout following the word is still worth having.
-    private func replaceText(of finished: FinishedWord, with replacement: String) -> Bool {
+    /// `leading` is the text of the words going over with it, as typed and as
+    /// corrected, each with the space after it.
+    private func replaceText(of finished: FinishedWord, with replacement: String,
+                             leading: (original: String, corrected: String)) -> Bool {
         switch finished.ending {
         case .space:
-            return TextSnippetService.postExpansion(deleteCount: finished.token.count + 1,
-                                                    typedTrigger: finished.token + " ",
-                                                    text: replacement + " ",
+            return TextSnippetService.postExpansion(deleteCount: leading.original.count + finished.token.count + 1,
+                                                    typedTrigger: leading.original + finished.token + " ",
+                                                    text: leading.corrected + replacement + " ",
                                                     trailingKeyCode: nil,
                                                     trailingFlags: [])
         case .punctuation:
-            return TextSnippetService.postExpansion(deleteCount: finished.token.count,
-                                                    typedTrigger: finished.token,
-                                                    text: replacement,
+            return TextSnippetService.postExpansion(deleteCount: leading.original.count + finished.token.count,
+                                                    typedTrigger: leading.original + finished.token,
+                                                    text: leading.corrected + replacement,
                                                     trailingKeyCode: nil,
                                                     trailingFlags: [])
         case .newline:
@@ -788,6 +862,7 @@ final class LayoutSwitcherService: ObservableObject {
     /// not a doubtful correction waiting for a second. Caller holds `eventLock`.
     private func clearTypingState() {
         typingBuffer.clear()
+        run.clear()
         watch.clear()
         gate.reset()
         activity &+= 1

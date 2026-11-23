@@ -637,6 +637,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutCorrectionWatch.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutOwnSwitches.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutSentenceContext.swift
+        Sources/Vorssaint/Services/LayoutSwitcher/LayoutPendingRun.swift
         Sources/Vorssaint/Services/LayoutSwitcher/LayoutVocabulary.swift
         Sources/Vorssaint/Core/LayoutSwitcherStrings.swift
         Sources/Vorssaint/Core/LayoutSwitcherExclusionStrings.swift

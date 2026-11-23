@@ -286,6 +286,21 @@ enum LayoutSwitcherSupport {
     /// skips this: the user pressing it has already answered the question.
     /// `urlSpellings` are URL prefixes as the wrong layout types them, which
     /// look structured and still need judging.
+    /// `replacement` with the capitals the app shows over the keys that were
+    /// typed. Messages and others capitalise the first word of a sentence
+    /// after it goes in, so the keys say `z` while the field shows `Z`, and
+    /// typing `я` over it would make the app capitalise it a second time in
+    /// front of the user. Unchanged when `shown` is not the typed text.
+    static func matchingShownCase(_ replacement: String, typed: String, shown: String?) -> String {
+        guard let shown, shown.count == typed.count, replacement.count == typed.count,
+              shown.lowercased() == typed.lowercased() else { return replacement }
+        return zip(zip(replacement, typed), shown).map { pair, shownCharacter in
+            let (character, typedCharacter) = pair
+            guard typedCharacter != shownCharacter else { return String(character) }
+            return shownCharacter.isUppercase ? character.uppercased() : character.lowercased()
+        }.joined()
+    }
+
     static func isCorrectable(_ word: String, minimumLength: Int, urlSpellings: Set<String> = []) -> Bool {
         guard word.count >= minimumLength else { return false }
         guard !word.allSatisfy({ $0.isNumber || $0 == "-" }) else { return false }
