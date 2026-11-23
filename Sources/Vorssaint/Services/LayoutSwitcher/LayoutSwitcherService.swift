@@ -573,6 +573,10 @@ final class LayoutSwitcherService: ObservableObject {
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
         switch keyCode {
         case kVK_Delete:
+            guard LayoutSwitcherSupport.deletesOneCharacter(flags: event.flags) else {
+                resetBuffer()
+                return Unmanaged.passUnretained(event)
+            }
             eventLock.withLock {
                 activity &+= 1
                 run.deleted(wasTyping: !typingBuffer.typing.isEmpty,
@@ -710,14 +714,22 @@ final class LayoutSwitcherService: ObservableObject {
         }
         guard decision.goesAhead else { return }
         // After Return the line may be gone, and only the word is checked.
-        let leading = finished.ending == .newline
+        let proposed = finished.ending == .newline
             ? []
             : followers(of: decision.open, typedOn: current, language: typedLanguage, into: candidate)
+        let proposedText = proposed.map { $0.original + " " }.joined() + finished.token
+        let shown = shownText(of: proposedText, ending: finished.ending)
+        // The field was asked while typing went on; what it said, and what
+        // the deletes would reach, may already be out of date.
+        guard eventLock.withLock({ activity == finished.activity }) else { return }
+        // The words before the one judged go only where the field confirms
+        // them. Otherwise the word alone is corrected, as it always was.
+        let leading = LayoutPendingRun.verified(proposed, text: \.original, before: finished.token, shown: shown)
         let original = leading.map { $0.original + " " }.joined()
         let recased = LayoutSwitcherSupport.matchingShownCase(
             leading.map { $0.corrected + " " }.joined() + candidate.replacement,
             typed: original + finished.token,
-            shown: shownText(of: original + finished.token, ending: finished.ending))
+            shown: shown.map { String($0.suffix(original.count + finished.token.count)) })
         let corrected = String(recased.prefix(original.count))
         let replacement = String(recased.dropFirst(original.count))
         guard replaceText(of: finished, with: replacement,

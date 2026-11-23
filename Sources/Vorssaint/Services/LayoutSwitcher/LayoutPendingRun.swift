@@ -78,6 +78,20 @@ struct LayoutPendingRun: Equatable {
         }
     }
 
+    /// `followers` as they may go over: all of them when the field shows them
+    /// and the word after them exactly where the run says, ignoring case,
+    /// which apps change on their own; none otherwise. The run only knows
+    /// the keys, and a key it read wrong (an Option-Backspace in an editor
+    /// that deletes a word with it, a key typed while the field was asked)
+    /// would have the deletes reach into text before the run.
+    static func verified<Follower>(_ followers: [Follower], text: (Follower) -> String,
+                                   before token: String, shown: String?) -> [Follower] {
+        guard !followers.isEmpty else { return followers }
+        let expected = followers.map { text($0) + " " }.joined() + token
+        guard let shown, shown.lowercased() == expected.lowercased() else { return [] }
+        return followers
+    }
+
     /// The open words directly before the one finished at `activity`, oldest
     /// first. A pause is no reason to stop: it does not move the caret, and
     /// the words before it are still the sentence the rewrite settled.

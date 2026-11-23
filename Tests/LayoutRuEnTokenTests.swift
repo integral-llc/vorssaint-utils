@@ -37,6 +37,7 @@ enum LayoutRuEnTokenTests {
         urlChecks(suite, scorer: scorer)
         catchUpChecks(suite, scorer: scorer)
         sentenceChecks(suite, scorer: scorer)
+        verificationChecks(suite)
         pendingRunChecks(suite)
         otherPairChecks(suite)
     }
@@ -81,15 +82,30 @@ enum LayoutRuEnTokenTests {
 
     /// What the text reads after typing `keys` on the English layout, with
     /// the service's steps: the buffer finishes words, the run collects the
-    /// open ones, and a rewritten word takes its followers along. `⌫` is a
-    /// Backspace.
-    private static func typedSentence(_ keys: String, scorer: LayoutDecisionScorer) -> String {
+    /// open ones, the field is asked what is before the caret, and a
+    /// rewritten word takes the followers it confirms along. `⌫` is a
+    /// Backspace, `⌥` an Option-Backspace that deletes the word before the
+    /// caret. `resetsOnWordDelete` false leaves the service's reset out, to
+    /// show the field check holds on its own. `lateKey` is typed after the
+    /// last word finishes and before the field is asked.
+    private static func typedSentence(_ keys: String, scorer: LayoutDecisionScorer,
+                                      resetsOnWordDelete: Bool = true, lateKey: String? = nil) -> String {
         var buffer = LayoutTypingBuffer()
         var run = LayoutPendingRun()
         var text = ""
         var activity: UInt64 = 0
-        for key in keys.map(String.init) {
+        let characters = keys.map(String.init)
+        for (index, key) in characters.enumerated() {
             activity += 1
+            if key == "⌥" {
+                while text.last == " " { text.removeLast() }
+                while let last = text.last, last != " " { text.removeLast() }
+                if resetsOnWordDelete {
+                    buffer.clear()
+                    run.clear()
+                }
+                continue
+            }
             if key == "⌫" {
                 run.deleted(wasTyping: !buffer.typing.isEmpty, hadFinished: !buffer.lastFinished.isEmpty)
                 buffer.deleteBackward()
@@ -109,16 +125,28 @@ enum LayoutRuEnTokenTests {
             else { continue }
             switch scorer.judgement(typed: finished.token, typedLanguage: "en", mapped: mapped, mappedLanguage: "ru") {
             case .rewrite(_, let replacement, _):
-                var followers: [(String, String)] = []
+                var proposed: [(original: String, corrected: String)] = []
                 for word in run.leading(before: activity).reversed() {
                     guard let other = table.mapForward(word.token),
                           scorer.followsCorrection(typed: word.token, typedLanguage: "en",
                                                    mapped: other, mappedLanguage: "ru")
                     else { break }
-                    followers.insert((word.token, other), at: 0)
+                    proposed.insert((word.token, other), at: 0)
                 }
-                let original = followers.map { $0.0 + " " }.joined() + finished.token + " "
-                let corrected = followers.map { $0.1 + " " }.joined() + replacement + " "
+                let judgedAt = activity
+                if index == characters.count - 1, let lateKey {
+                    text += lateKey
+                    activity += 1
+                }
+                // The field: the text before the caret, less the space after the word.
+                let expected = proposed.map { $0.original + " " }.joined() + finished.token
+                let field = text.hasSuffix(" ") ? String(text.dropLast()) : text
+                let shown = field.count >= expected.count ? String(field.suffix(expected.count)) : nil
+                guard activity == judgedAt else { continue }
+                let leading = LayoutPendingRun.verified(proposed, text: \.original,
+                                                        before: finished.token, shown: shown)
+                let original = leading.map { $0.original + " " }.joined() + finished.token + " "
+                let corrected = leading.map { $0.corrected + " " }.joined() + replacement + " "
                 guard text.hasSuffix(original) else { return "text drifted from the run" }
                 text = String(text.dropLast(original.count)) + corrected
                 run.clear()
@@ -144,12 +172,40 @@ enum LayoutRuEnTokenTests {
             ("a ltkf. ", "a делаю ", "an English word stays English"),
             ("ok z ltkf. ", "ok я делаю ", "a word that would not be a word in Russian ends the run"),
             ("z  ltkf. ", "z  делаю ", "a double space ends the run, since its text is no longer known"),
-            ("hello z ltkf. ", "hello я делаю ", "a word judged English closes the run behind it")
+            ("hello z ltkf. ", "hello я делаю ", "a word judged English closes the run behind it"),
+            ("b z zy⌥ ltkf. ", "b z  делаю ", "an Option-Backspace ends the run and the text before it stays")
         ]
         for test in cases {
             let result = typedSentence(test.typed, scorer: scorer)
             suite.expect(result == test.expected, "\(test.why): `\(test.typed)` became `\(result)`")
         }
+        let unreset = typedSentence("b z zy⌥ ltkf. ", scorer: scorer, resetsOnWordDelete: false)
+        suite.expect(unreset == "b z  делаю ",
+                     "with the run out of step after a word delete, the field check alone keeps the text before it: `\(unreset)`")
+        let late = typedSentence("z ltkf. ", scorer: scorer, lateKey: "x")
+        suite.expect(late == "z ltkf. x",
+                     "a key typed while the field is asked stops the edit, and nothing is deleted: `\(late)`")
+    }
+
+    private static func verificationChecks(_ suite: TestSuite) {
+        let followers = [(original: "b", corrected: "и"), (original: "z", corrected: "я")]
+        func kept(_ shown: String?) -> [String] {
+            LayoutPendingRun.verified(followers, text: \.original, before: "ltkf.", shown: shown).map(\.original)
+        }
+        suite.expect(kept("b z ltkf.") == ["b", "z"] && kept("B z ltkf.") == ["b", "z"],
+                     "followers go when the field shows them where the run says, whatever the capitals")
+        suite.expect(kept(nil).isEmpty, "a field that cannot be read keeps the edit to the word")
+        suite.expect(kept(" z  ltkf.").isEmpty && kept("z ltkf. x").isEmpty && kept("q z ltkf.").isEmpty,
+                     "a field that shows anything else keeps the edit to the word")
+        suite.expect(LayoutPendingRun.verified([(original: String, corrected: String)](), text: \.original,
+                                               before: "ltkf.", shown: nil).isEmpty,
+                     "a word on its own needs no check")
+        suite.expect(LayoutSwitcherSupport.deletesOneCharacter(flags: [])
+                        && LayoutSwitcherSupport.deletesOneCharacter(flags: [.maskShift])
+                        && !LayoutSwitcherSupport.deletesOneCharacter(flags: [.maskAlternate])
+                        && !LayoutSwitcherSupport.deletesOneCharacter(flags: [.maskCommand])
+                        && !LayoutSwitcherSupport.deletesOneCharacter(flags: [.maskControl]),
+                     "only a plain Backspace is followed key by key; with a modifier the run is dropped")
     }
 
     private static func pendingRunChecks(_ suite: TestSuite) {

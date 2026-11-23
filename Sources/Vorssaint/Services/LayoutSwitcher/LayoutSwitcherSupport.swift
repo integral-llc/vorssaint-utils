@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import CoreGraphics
 import Foundation
 
 /// What the service reads out of preferences on every sync.
@@ -286,6 +287,14 @@ enum LayoutSwitcherSupport {
     /// skips this: the user pressing it has already answered the question.
     /// `urlSpellings` are URL prefixes as the wrong layout types them, which
     /// look structured and still need judging.
+    /// A Backspace the typing buffer can follow. With Option it deletes a
+    /// word in most editors and a character in some, and with Command or
+    /// Control it does more again, so after any of them what is behind the
+    /// caret is unknown.
+    static func deletesOneCharacter(flags: CGEventFlags) -> Bool {
+        flags.intersection([.maskAlternate, .maskCommand, .maskControl]).isEmpty
+    }
+
     /// `replacement` with the capitals the app shows over the keys that were
     /// typed. Messages and others capitalise the first word of a sentence
     /// after it goes in, so the keys say `z` while the field shows `Z`, and
