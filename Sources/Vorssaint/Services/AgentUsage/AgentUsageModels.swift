@@ -68,7 +68,7 @@ struct AgentTokens: Equatable {
 /// One billed model response.
 struct AgentUsageRecord: Equatable {
     let provider: AgentProvider
-    let date: Date
+    var date: Date
     let model: String
     let project: String
     let session: String
@@ -159,5 +159,5 @@ enum AgentUsageEvent: Equatable {
     case finished(provider: AgentProvider, duration: TimeInterval, cost: Double, tokens: Int, project: String)
     case limitWarning(provider: AgentProvider, window: AgentLimitWindow)
     case limitReset(provider: AgentProvider, window: AgentLimitWindow)
-    case budgetReached(spent: Double, budget: Double)
+    case budgetReached(spent: Double, budget: Double, partial: Bool)
 }
