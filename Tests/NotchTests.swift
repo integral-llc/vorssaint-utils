@@ -3794,8 +3794,28 @@ enum NotchTests {
                                                                  DefaultsKey.notchCalendarCountdownLead,
                                                                  DefaultsKey.notchCalendarTimeLeft,
                                                                  DefaultsKey.notchCalendarWeekNumbers,
+                                                                 DefaultsKey.notchCalendarLayout,
                                                                  AppFeature.notchCalendar.availabilityKey]),
                "calendar preferences travel in backup")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.notchCalendarLayout] as? String == NotchCalendarLayout.week.rawValue,
+                     "a short island's Calendar page opens on the week until its month switch is turned on")
+        suite.expect(NotchLayout.calendarMonthRowHeight(height: NotchCalendarLayout.stackedGridHeight)
+                     == NotchCalendarLayout.stackedRowHeight,
+                     "the month above the agenda draws its rows at the short height it was given")
+        let underSwitch = { (page: CGFloat) in page - NotchCalendarLayout.switchBand }
+        suite.expect(NotchCalendarLayout.showsSwitch(pageHeight: NotchLayout.compactContentHeight)
+                     && !NotchCalendarLayout.showsSwitch(pageHeight: NotchLayout.calendarMonthMinimumHeight)
+                     && NotchLayout.calendarMonthRowHeight(height: underSwitch(NotchLayout.compactContentHeight)) >= 16,
+                     "the week and month switch shows wherever the whole-page month keeps six rows under it")
+        suite.expect(!NotchCalendarLayout.stacksAgenda(pageHeight: underSwitch(NotchLayout.spaciousContentHeight))
+                     && NotchCalendarLayout.stacksAgenda(pageHeight: underSwitch(299)),
+                     "the month lists events under it once the page has room for a card below the switch and grid")
+        suite.expect(AppLanguage.allCases.allSatisfy { language in
+            let text = FeatureStrings.notchCalendar(language)
+            return !text.weekView.isEmpty && text.weekView != text.month
+        }, "the week and month switch names both halves in every language")
+        suite.expect(NotchCalendarLayout.allCases.map(\.rawValue) == ["week", "month"],
+                     "stored calendar layouts keep their raw values, which backups carry")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.notchCalendarExcluded),
                      "hidden calendars travel in backup")
         suite.expect(NotchCalendarSupport.excludedCalendars(in: defaults).isEmpty,

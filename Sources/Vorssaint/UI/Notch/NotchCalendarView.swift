@@ -11,12 +11,17 @@ struct NotchCalendarView: View {
     @ObservedObject private var calendar = NotchCalendarService.shared
     @ObservedObject private var permissions = Permissions.shared
     @AppStorage(DefaultsKey.notchCalendarCountdown) private var countdownForEvery = false
+    @AppStorage(DefaultsKey.notchCalendarLayout) private var layout = NotchCalendarLayout.defaultValue
     @Environment(\.notchBand) private var band
     /// The day the month grid or the week strip is built around.
     @State private var focus = Date()
     @State private var selectedDay: Date?
     /// The strip's month grid, in place of the strip and the cards.
     @State private var showingMonth = false
+    /// Where a short island's page opens, and where Today and Escape return.
+    private var opensOnMonth: Bool { layout == .month }
+    /// Escape steps back to the remembered view before it closes the island.
+    private var awayFromDefault: Bool { !showsMonth && showingMonth != opensOnMonth }
     private var text: NotchCalendarStrings { FeatureStrings.notchCalendar(l10n.language) }
     /// A month grid needs six rows beside an agenda; anything shorter shows
     /// the week as a strip above a vertical agenda.
@@ -40,12 +45,12 @@ struct NotchCalendarView: View {
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             }
-                        } else if showingMonth {
-                            monthGrid(now: context.date)
                         } else {
                             VStack(spacing: NotchLayout.rowSpacing) {
-                                weekStrip(now: context.date)
-                                agenda(now: context.date)
+                                if showsSwitch {
+                                    NotchCalendarLayoutSwitch(selection: layoutSelection, text: text)
+                                }
+                                shortPage(now: context.date)
                             }
                         }
                     }
@@ -64,20 +69,51 @@ struct NotchCalendarView: View {
         // Day and month names follow the app's language; the order of the
         // date and the 12/24-hour clock follow the user's region.
         .environment(\.locale, l10n.language.formattingLocale())
-        .onAppear { if ownsMonth { calendar.showMonth(focus) } }
+        .onAppear {
+            showingMonth = opensOnMonth
+            if ownsMonth { calendar.showMonth(focus) }
+        }
         .onChange(of: focus) { previous, date in
             // A month read already covers every week of that month, so
             // moving the strip within it keeps the loaded events.
             if !Calendar.current.isDate(previous, equalTo: date, toGranularity: .month) { calendar.showMonth(date) }
         }
-        // Escape returns from the month grid to the strip before the island closes.
-        .onChange(of: showingMonth && !showsMonth) { _, showing in
+        .onChange(of: awayFromDefault) { _, away in
             guard !preview else { return }
-            NotchService.shared.setPageLayer(.calendar, close: showing ? { showingMonth = false } : nil)
+            NotchService.shared.setPageLayer(.calendar, close: away ? { showingMonth = opensOnMonth } : nil)
         }
         .onDisappear {
             if ownsMonth { calendar.showMonth(nil) }
             if !preview { NotchService.shared.setPageLayer(.calendar, close: nil); calendar.revealing = nil }
+        }
+    }
+
+    private var showsSwitch: Bool { NotchCalendarLayout.showsSwitch(pageHeight: size.height) }
+    /// What is left of the page under the week and month switch.
+    private var contentHeight: CGFloat { size.height - (showsSwitch ? NotchCalendarLayout.switchBand : 0) }
+
+    /// The switch shows what is on the page; choosing remembers it for the
+    /// next time the page opens.
+    private var layoutSelection: Binding<NotchCalendarLayout> {
+        Binding(get: { showingMonth ? .month : .week }, set: { choice in
+            showingMonth = choice == .month
+            layout = choice
+        })
+    }
+
+    @ViewBuilder private func shortPage(now: Date) -> some View {
+        if showingMonth && NotchCalendarLayout.stacksAgenda(pageHeight: contentHeight) {
+            VStack(spacing: NotchLayout.rowSpacing) {
+                stackedMonthGrid(now: now)
+                agenda(now: now)
+            }
+        } else if showingMonth {
+            monthGrid(now: now)
+        } else {
+            VStack(spacing: NotchLayout.rowSpacing) {
+                weekStrip(now: now)
+                agenda(now: now)
+            }
         }
     }
 
@@ -100,9 +136,24 @@ struct NotchCalendarView: View {
         }
     }
 
+    /// Above the agenda, picking a day lists its events below, and picking it
+    /// again returns to the coming week, as on the strip.
+    private func stackedMonthGrid(now: Date) -> some View {
+        NotchCalendarMonthGrid(month: focus, selectedDay: selectedDay, now: now,
+                               height: NotchCalendarLayout.stackedGridHeight,
+                               events: calendar.events, text: text) { date in
+            if let selectedDay, Calendar.current.isDate(date, inSameDayAs: selectedDay) {
+                self.selectedDay = nil
+            } else {
+                select(date)
+            }
+        }
+        .frame(height: NotchCalendarLayout.stackedGridHeight)
+    }
+
     /// Picking a day lands back on the strip with that day.
     private func monthGrid(now: Date) -> some View {
-        NotchCalendarMonthGrid(month: focus, selectedDay: selectedDay, now: now, height: size.height,
+        NotchCalendarMonthGrid(month: focus, selectedDay: selectedDay, now: now, height: contentHeight,
                                events: calendar.events, text: text) { date in
             select(date)
             showingMonth = false
@@ -125,11 +176,12 @@ struct NotchCalendarView: View {
             if showsMonth {
                 title.accessibilityAddTraits(.isHeader)
             } else {
-                Button { showingMonth.toggle() } label: {
+                Button(action: toggleMonth) {
                     title
                         .padding(.horizontal, 7)
                         .frame(height: 28)
-                        .background(.white.opacity(showingMonth ? 0.12 : 0),
+                        // Where the page has its switch, the switch shows the month is on.
+                        .background(.white.opacity(showingMonth && !showsSwitch ? 0.12 : 0),
                                     in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
@@ -139,6 +191,11 @@ struct NotchCalendarView: View {
                 .accessibilityAddTraits(showingMonth ? .isSelected : [])
             }
         }
+    }
+
+    private func toggleMonth() {
+        showingMonth.toggle()
+        layout = showingMonth ? .month : .week
     }
 
     /// Calendar itself follows the arrows where the row has room for four
@@ -158,7 +215,7 @@ struct NotchCalendarView: View {
                 }
                 NotchIconButton(symbol: "circle.circle", title: text.today) {
                     today(now: Date())
-                    showingMonth = false
+                    showingMonth = opensOnMonth
                 }
                 NotchIconButton(symbol: "chevron.right", title: byWeek ? text.nextWeek : text.nextMonth) {
                     byWeek ? moveWeek(1) : moveMonth(1)
