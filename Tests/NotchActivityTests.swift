@@ -97,6 +97,75 @@ enum NotchActivityTests {
                 }
             }
         }
+        keepAwakeDateContracts(suite, now: now, locale: locale)
+    }
+
+    /// The resting date sits in the strip's middle on every display, at the
+    /// strip's own size. Only a real camera keeps the middle to itself.
+    private static func keepAwakeDateContracts(_ suite: TestSuite, now: Date, locale: Locale) {
+        let screen = CGRect(x: 0, y: 0, width: 2560, height: 1440)
+        for notched in [false, true] {
+            var dated = NotchGeometry(screen: screen, safeAreaTop: notched ? 32 : 0, cameraWidth: notched ? 185 : 0,
+                                      menuBarHeight: 24, compactSideRoom: 400)
+            dated.restingText = NotchRestingText(wing: 40, row: 80, date: 66)
+            var undated = dated
+            undated.restingText = nil
+            for end in [nil, now.addingTimeInterval(45 * 60), now.addingTimeInterval(26 * 3600)] {
+                let datedWing = NotchKeepAwakeSupport.stripWing(until: end, now: now, locale: locale, in: dated)
+                let strip = dated.compactTimerGeometry(showsDownloads: false, wing: datedWing)
+                suite.expect(datedWing == NotchKeepAwakeSupport.stripWing(until: end, now: now, locale: locale, in: undated)
+                             && strip.compactActivitySize == undated.compactTimerGeometry(
+                                showsDownloads: false, wing: datedWing).compactActivitySize,
+                             "the date never widens the Keep Awake strip")
+                suite.expect(NotchKeepAwakeSupport.showsDate(in: strip) == !notched,
+                             "the date fills the middle except over a real camera")
+                suite.expect(!NotchKeepAwakeSupport.showsDate(in: undated.compactTimerGeometry(
+                    showsDownloads: false, wing: datedWing)), "no date while the island shows none")
+            }
+        }
+        // The strip hugs what it shows: the middle closes in on the date, the
+        // wings keep the cup and the reading, and the date stays centred.
+        var hugging = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 24, compactSideRoom: 400)
+        hugging.restingText = NotchRestingText(wing: 40, row: 80, date: 66)
+        var plainStrip = hugging
+        plainStrip.restingText = nil
+        for end in [nil, now.addingTimeInterval(45 * 60)] {
+            let wing = NotchKeepAwakeSupport.stripWing(until: end, now: now, locale: locale, in: hugging)
+            let strip = NotchKeepAwakeSupport.stripGeometry(hugging.compactTimerGeometry(showsDownloads: false, wing: wing))
+            let bare = NotchKeepAwakeSupport.stripGeometry(plainStrip.compactTimerGeometry(showsDownloads: false, wing: wing))
+            suite.expect(strip.compactActivityCameraGap == 66 + NotchLayout.restingItemGap * 2
+                         && strip.compactActivityWingWidth == bare.compactActivityWingWidth
+                         && strip.compactActivitySize.width
+                            == strip.compactActivityCameraGap + strip.compactActivityWingWidth * 2
+                         && strip.compactActivitySize.width < bare.compactActivitySize.width,
+                         "the middle closes in on the date while the wings keep their own width")
+            suite.expect(bare == plainStrip.compactTimerGeometry(showsDownloads: false, wing: wing),
+                         "without the date the strip is the timer's, untouched")
+        }
+        var longDate = hugging
+        longDate.restingText = NotchRestingText(wing: 80, row: 300, date: 280)
+        let long = longDate.compactTimerGeometry(showsDownloads: false)
+        suite.expect(NotchKeepAwakeSupport.stripGeometry(long).compactActivityCameraGap == long.compactActivityCameraGap,
+                     "a date wider than the cutout never widens the strip")
+        var notchedDated = NotchGeometry(screen: screen, safeAreaTop: 32, cameraWidth: 185, menuBarHeight: 24,
+                                         compactSideRoom: 400)
+        notchedDated.restingText = NotchRestingText(wing: 40, row: 80, date: 66)
+        let overCamera = notchedDated.compactTimerGeometry(showsDownloads: false)
+        suite.expect(NotchKeepAwakeSupport.stripGeometry(overCamera) == overCamera,
+                     "a real camera keeps its own width")
+        for (width, height) in [(1280.0, 800.0), (1920.0, 1080.0), (2560.0, 1440.0), (6016.0, 3384.0)] {
+            for barHeight: CGFloat in [22, 24, 32] {
+                var plain = NotchGeometry(screen: CGRect(x: 0, y: 0, width: width, height: height), safeAreaTop: 0,
+                                          cameraWidth: 0, menuBarHeight: barHeight, compactSideRoom: 400)
+                plain.restingText = NotchRestingText(wing: 80, row: 200, date: 180)
+                var bare = plain
+                bare.restingText = nil
+                suite.expect(NotchKeepAwakeSupport.showsDate(in: plain.compactTimerGeometry(showsDownloads: false))
+                             && plain.compactTimerGeometry(showsDownloads: false).compactActivitySize
+                                == bare.compactTimerGeometry(showsDownloads: false).compactActivitySize,
+                             "every display shows the date in the middle at the strip's own size, even a long one")
+            }
+        }
     }
 
     private static func lowBatteryContracts(_ suite: TestSuite) {

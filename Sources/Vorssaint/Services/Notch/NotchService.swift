@@ -705,7 +705,9 @@ final class NotchService: ObservableObject {
             return geometry.compactCalendarGeometry(wing: calendarStripWing(for: companion, in: geometry),
                                                     paired: companion != nil)
         // Its reading is a countdown like the timer's, so it takes the timer's wings.
-        case .keepAwake: return geometry.compactTimerGeometry(showsDownloads: false, wing: keepAwakeStripWing(in: geometry))
+        case .keepAwake:
+            return NotchKeepAwakeSupport.stripGeometry(
+                geometry.compactTimerGeometry(showsDownloads: false, wing: keepAwakeStripWing(in: geometry)))
         default: return geometry
         }
     }

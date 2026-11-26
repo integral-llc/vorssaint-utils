@@ -6,7 +6,8 @@ import SwiftUI
 /// The closed island while Keep Awake runs: the cup of its tile left of the
 /// camera, in the tile's yellow, and on the right the time a timed session
 /// has left, or infinity for one without an end. Both open Controls, where
-/// the tile is. The wings are as wide as the wider side needs.
+/// the tile is. The wings are as wide as the wider side needs. The resting
+/// date sits in the middle, which is empty wherever no real camera is.
 struct NotchKeepAwakeStrip: View {
     @ObservedObject var service: NotchService
     /// Where the island draws it: its own strip as of the last update, or
@@ -47,7 +48,17 @@ struct NotchKeepAwakeStrip: View {
                 }
                 .padding(.leading, geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2))
                 .frame(width: wing, height: height, alignment: .leading)
-                Color.clear.frame(width: geometry.compactActivityCameraGap)
+                Group {
+                    // The strip never grows for the date: a long format scales down
+                    // and then truncates inside the middle.
+                    if NotchKeepAwakeSupport.showsDate(in: geometry) {
+                        NotchRestingDateText(part: .whole).foregroundStyle(.white.opacity(0.9))
+                            .padding(.horizontal, NotchLayout.restingItemGap / 2)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: geometry.compactActivityCameraGap, height: height)
                 Group {
                     if wing >= 42 {
                         if let end {

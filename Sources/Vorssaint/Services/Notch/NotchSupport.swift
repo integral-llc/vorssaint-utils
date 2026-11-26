@@ -2309,6 +2309,9 @@ struct NotchGeometry: Equatable {
     var pageTrailingControls = 0
     private var allowsActivityFooter = true
     private var minimumCompactWidth: CGFloat = 0
+    /// A compact strip's middle when it shows something narrower than a
+    /// simulated cutout there; nil keeps the cutout's width.
+    private var compactActivityMiddle: CGFloat?
     /// Narrower wings than this are dropped rather than drawn cramped.
     private var minimumWing: CGFloat = 44
 
@@ -2547,7 +2550,7 @@ struct NotchGeometry: Equatable {
         max(compactMusicArtworkInset + compactMusicArtworkSide,
             compactMusicBarsInset + NotchLayout.compactMusicBarsWidth).rounded(.up)
     }
-    var musicCameraGap: CGFloat { cameraWidth }
+    var musicCameraGap: CGFloat { compactActivityMiddle ?? cameraWidth }
     var compactMusicLabelInset: CGFloat {
         let height = compactActivityContentHeight
         let shoulder = NotchLayout.shoulder(height: height)
@@ -2629,11 +2632,23 @@ struct NotchGeometry: Equatable {
         return compact
     }
     var musicStrip: CGSize {
-        let preferred = min(max(layout == .spacious ? 520 : 440, cameraWidth + 88, minimumCompactWidth), screen.width - 24)
+        let middle = musicCameraGap
+        let preferred = min(max(layout == .spacious ? 520 : 440, middle + 88, minimumCompactWidth), screen.width - 24)
         let measuredRoom = compactSideRoom ?? 0
         let room = measuredRoom.isFinite ? max(0, measuredRoom).rounded(.down) : 0
-        let wings = min(max(0, preferred - cameraWidth), room * 2)
-        return CGSize(width: cameraWidth + (wings >= minimumWing * 2 ? wings : 0), height: stripHeight)
+        let wings = min(max(0, preferred - middle), room * 2)
+        return CGSize(width: middle + (wings >= minimumWing * 2 ? wings : 0), height: stripHeight)
+    }
+
+    /// The strip with its middle closed in to `width`, for content that fills
+    /// a simulated cutout without needing all of it. A real camera, a capsule
+    /// or a middle no narrower than the cutout keeps the strip as it is.
+    func compactActivityNarrowed(toMiddle width: CGFloat) -> NotchGeometry {
+        guard !isNotched, !floats, width.isFinite, width > 0, width < cameraWidth else { return self }
+        var compact = self
+        compact.minimumCompactWidth = max(0, minimumCompactWidth - cameraWidth + width)
+        compact.compactActivityMiddle = width.rounded(.up)
+        return compact
     }
     var musicWingWidth: CGFloat { max(0, (musicStrip.width - musicCameraGap) / 2) }
 

@@ -38,6 +38,20 @@ enum NotchKeepAwakeSupport {
         end.addingTimeInterval(-TimeInterval(minutesLeft(until: end, now: now)) * 60)
     }
 
+    /// Whether the resting date goes in the middle of the strip drawn in
+    /// `geometry`: always while the date is on, on any display, at the strip's
+    /// own size. A physical camera is the one middle nothing can show in.
+    static func showsDate(in geometry: NotchGeometry) -> Bool {
+        !geometry.isNotched && !geometry.floats && geometry.restingText != nil && geometry.compactActivityCameraGap > 0
+    }
+
+    /// The strip hugs what it shows: with the date in the middle, the middle
+    /// is the date's widest form and a little air, not the whole cutout.
+    static func stripGeometry(_ strip: NotchGeometry) -> NotchGeometry {
+        guard showsDate(in: strip), let date = strip.restingText?.date, date.isFinite, date > 0 else { return strip }
+        return strip.compactActivityNarrowed(toMiddle: date + NotchLayout.restingItemGap * 2)
+    }
+
     /// The wider of the two sides, the cup or the time left, drawn as the
     /// strip draws them, with the timer's clearance from the silhouette's
     /// curve and air beside the camera.
