@@ -106,7 +106,8 @@ FAN_HELPER_ID="$APP_BUNDLE_ID.fan-control"
 # Sources/NowPlayingAdapter. Staged under Contents/Frameworks, signed on its own.
 NOW_PLAYING_ADAPTER_ID="$APP_BUNDLE_ID.now-playing"
 NOW_PLAYING_ADAPTER="libVorssaintNowPlaying.dylib"
-TARGET="arm64-apple-macosx14.0"
+# The host architecture, so the same script builds on Apple Silicon and Intel Macs.
+TARGET="${VORSSAINT_TARGET:-$(uname -m)-apple-macosx14.0}"
 ENTITLEMENTS="Resources/Vorssaint.entitlements"
 YTDLP_ENTITLEMENTS="Resources/YtDlp.entitlements"
 LEGACY_IDENTITY="Vorssaint Utils Signing"
@@ -843,18 +844,20 @@ fetch_transcriber_helpers() {
         fi
     fi
 
-    # Martin Riedl's static arm64 builds link only system frameworks, so they
+    # Martin Riedl's static builds link only system frameworks, so they
     # run from inside the bundle without Homebrew. FFMPEG_DIR overrides them.
     if [[ -n "${FFMPEG_DIR:-}" ]]; then
         cp "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe" "$TRANSCRIBER_CACHE/"
         chmod +x "$TRANSCRIBER_CACHE/ffmpeg" "$TRANSCRIBER_CACHE/ffprobe"
     else
         local tool
+        local ffmpeg_arch=arm64
+        [[ "$(uname -m)" == x86_64 ]] && ffmpeg_arch=amd64
         for tool in ffmpeg ffprobe; do
             [[ -x "$TRANSCRIBER_CACHE/$tool" ]] && continue
             echo "  fetching $tool…"
             curl -fL --progress-bar -o "$TRANSCRIBER_CACHE/$tool.zip" \
-                "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/$tool.zip"
+                "https://ffmpeg.martin-riedl.de/redirect/latest/macos/$ffmpeg_arch/release/$tool.zip"
             unzip -o -q "$TRANSCRIBER_CACHE/$tool.zip" "$tool" -d "$TRANSCRIBER_CACHE"
             rm -f "$TRANSCRIBER_CACHE/$tool.zip"
             chmod +x "$TRANSCRIBER_CACHE/$tool"
@@ -876,6 +879,10 @@ fetch_transcriber_helpers() {
         cmake --build "$src/build" -j --config Release >/dev/null
         cp "$src/build/bin/whisper-cli" "$TRANSCRIBER_CACHE/whisper-cli"
     fi
+    # Apple Silicon linkers sign ad hoc by default, x86_64 ones do not, and an unsigned
+    # helper fails the bundle's deep verify. A cached build gets the same fix.
+    /usr/bin/codesign --verify "$TRANSCRIBER_CACHE/whisper-cli" 2>/dev/null \
+        || /usr/bin/codesign --force --sign - "$TRANSCRIBER_CACHE/whisper-cli"
 
     local models="$HOME/Library/Application Support/Vorssaint/Models"
     mkdir -p "$models"
